@@ -1,13 +1,8 @@
 # QPP — Quantum Programming Playground
 
-QPP is a Haskell framework in which a quantum program is an expression in an
-algebra of unitary operators. It was written for the DIKU MSc course *Hybrid
-Quantum Programming*, whose aim is to train people who can build quantum
-software — algorithms, simulators, compilers, analyses — and not only use it.
-Contrary to large industrial platforms such as Qiskit or Pytket, QPP's core
-fits on a page: a program is a value of one small data type, a compiler pass
-is a function on that type, and a simulation backend is a module that
-interprets it. d, simplified, converted to a
+QPP (Quantum Programming Playground) is an open platform for teaching and research, by which
+students and researchers can build new quantum software (algorithms, compilers and analyses)
+from a small set of building blocks that combine according to a few clear algebraic rules.
 
 ## Operators
 
