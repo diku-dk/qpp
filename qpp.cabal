@@ -1,0 +1,301 @@
+cabal-version:   3.4
+name:            qpp
+version:         0.1.0.0
+synopsis:        HQP language playground in Haskell
+license:         BSD-3-Clause
+license-file:    LICENSE
+author:          James Avery
+maintainer:      avery@diku.dk
+category:        Math
+build-type:      Simple
+extra-doc-files: CHANGELOG.md
+
+common warnings
+    ghc-options: -Wall -Wno-orphans
+
+
+common common-options
+    default-language: GHC2021    
+    -- Everything GHC2021 already implies is left out (FlexibleContexts,
+    -- FlexibleInstances, TypeSynonymInstances, BinaryLiterals,
+    -- TypeApplications, ScopedTypeVariables, GeneralizedNewtypeDeriving).
+    -- Narrower extensions live in per-file {-# LANGUAGE #-} pragmas.
+    default-extensions:
+        NoMonomorphismRestriction,
+        TypeFamilies,
+        PatternSynonyms,
+        ViewPatterns,
+        LambdaCase
+
+library
+    import:   warnings, common-options
+    exposed-modules:
+      QPP
+      -- QOp syntax definitions and Operator typeclass:
+      QPP.Syntax
+      -- QOp program transformations for optimization and analysis:
+      QPP.Rewrite
+      QPP.Util
+      -- HQP Semantics backend implementations:
+      QPP.Semantics
+      QPP.Semantics.Matrix
+      QPP.Semantics.Statevector
+      --QPP.Semantics.StateHmatrix
+      QPP.MPS
+      QPP.MPS.Diagonal
+      QPP.Semantics.MPS
+      QPP.Semantics.Stabilizer
+      -- Pretty-printing HQP programs and representations:
+      QPP.PrettyPrint
+      QPP.PrettyPrint.Op
+      QPP.PrettyPrint.Matrix
+      -- Example quantum programs written in HQP:
+      Programs.QFT
+      Programs.MatrixPreparation
+      Programs.SparseMatrixPreparation
+      Programs.MatrixArithmetic
+      Programs.Qubitization
+      Programs.SVT
+      Programs.RootFinding
+      Programs.SunderhaufOptPoly
+      Programs.QuantumAdder
+      Programs.RepeaterProtocol
+
+    build-depends:  
+        base,
+        hmatrix,
+        mtl,
+        array,
+        containers,
+        massiv,
+        vector,
+        integer-logarithms,
+        ieee754,
+        pqueue,
+        poly,
+        semirings
+--        hasktorch
+    hs-source-dirs:   src
+
+common exercises-common
+  default-language: GHC2021
+  hs-source-dirs: exercises
+  build-depends:
+      base,
+      hmatrix,
+      qpp
+  ghc-options: -Wall
+
+executable NoCloning
+  import: exercises-common
+  main-is: NoCloning.hs
+
+
+executable ProgramInversion
+  import: exercises-common
+  main-is: ProgramInversion.hs
+  ghc-options:
+      -Wno-missing-signatures
+      -Wno-name-shadowing
+      -Wno-incomplete-uni-patterns
+
+executable YesTeleportation
+  import: exercises-common
+  build-depends:
+    random
+  main-is: YesTeleportation.hs
+
+executable TestRepeater
+  import: exercises-common
+  main-is: TestRepeater.hs
+  build-depends:
+    random
+  ghc-options:
+      -Wno-missing-signatures
+      -Wno-name-shadowing
+      -Wno-incomplete-uni-patterns
+
+-- exercises/TestQFT.hs was removed in 9f022ed; QFT coverage lives in the QFTTest
+-- test-suite below.
+
+executable MatrixPreparationTest
+  import: exercises-common
+  build-depends:
+    random,
+    vector
+  main-is: MatrixPreparationTest.hs
+   
+executable SVTtest
+  import: exercises-common
+  build-depends:
+    random,
+    vector,
+    containers,
+    poly
+  main-is: SVTtest.hs
+
+executable Qubitizationtest
+  import: exercises-common
+  build-depends:
+    random,
+    vector,
+    poly
+  main-is: QubitizationTest.hs
+
+executable RootFindingTest
+  import: exercises-common
+  build-depends:
+    poly,
+    vector
+  main-is: RootFindingTest.hs
+
+executable SparseMatrixTest
+  import: exercises-common
+  build-depends:
+    poly,
+    vector
+  main-is: SparseMatrixTest.hs
+
+executable SunderhaufTest
+  import: exercises-common
+  build-depends:
+    poly,
+    vector
+  main-is: SunderHaufTest.hs
+
+executable Stabilizers
+  import: exercises-common
+  build-depends:
+    bv
+  main-is: Stabilizers.hs
+
+-- ---------------------------------------------------------------------------
+-- Weekly problem sheets (problems/).  These are the *unsolved* student-facing
+-- scaffolds: they compile and run, but the interesting functions are TODO
+-- stubs.  Worked demos live in exercises/, reference answers in solutions/.
+-- Run one with `cabal run <name>`, e.g. `cabal run QubitsProblem`.
+-- ---------------------------------------------------------------------------
+
+common problems-common
+  default-language: GHC2021
+  hs-source-dirs: problems
+  build-depends:
+      base,
+      hmatrix,
+      qpp
+  ghc-options: -Wall
+
+-- Week 1
+executable QubitsProblem
+  import: problems-common
+  main-is: week1/QubitsProblem.hs
+
+executable PauliBlochProblem
+  import: problems-common
+  main-is: week1/PauliBlochProblem.hs
+
+executable TensorProductsProblem
+  import: problems-common
+  main-is: week1/TensorProductsProblem.hs
+
+executable MeasurementProblem
+  import: problems-common
+  main-is: week1/MeasurementProblem.hs
+
+executable QuantumProgramsProblem
+  import: problems-common
+  main-is: week1/QuantumProgramsProblem.hs
+
+-- Week 2
+executable StatePreparationProblem
+  import: problems-common
+  main-is: week2/StatePreparationProblem.hs
+
+executable QFTProblem
+  import: problems-common
+  main-is: week2/QFTProblem.hs
+
+executable AmplitudeAmplificationProblem
+  import: problems-common
+  main-is: week2/AmplitudeAmplificationProblem.hs
+
+executable GottesmanKnillProblem
+  import: problems-common
+  main-is: week2/GottesmanKnillProblem.hs
+
+-- Week 3
+executable StabilizersProblem
+  import: problems-common
+  main-is: week3/StabilizersProblem.hs
+
+-- Unsolved counterparts of the worked exercises/ demos
+executable NoCloningProblem
+  import: problems-common
+  main-is: NoCloningProblem.hs
+
+executable YesTeleportationProblem
+  import: problems-common
+  build-depends:
+    random
+  main-is: YesTeleportationProblem.hs
+
+-- ---------------------------------------------------------------------------
+-- Validation suites (tasty).  Run them all with `cabal test all`, or one at a time
+-- with `cabal run <name> [-- <tasty options>]`.  See test/README.md.
+-- ---------------------------------------------------------------------------
+
+common test-common
+  default-language: GHC2021
+  hs-source-dirs: test
+  build-depends:
+      base,
+      hmatrix,
+      qpp,
+      tasty,
+      tasty-hunit,
+      tasty-quickcheck,
+      QuickCheck
+  ghc-options: -Wall
+
+test-suite BackendValidation
+  import: test-common
+  type: exitcode-stdio-1.0
+  main-is: BackendValidation.hs
+  other-modules: Generators
+
+test-suite MatrixPrepTest
+  import: test-common
+  type: exitcode-stdio-1.0
+  build-depends:
+    vector
+  main-is: MatrixPrepTest.hs
+
+test-suite AlgebraTest
+  import: test-common
+  type: exitcode-stdio-1.0
+  main-is: AlgebraTest.hs
+  other-modules: Generators
+
+test-suite QFTTest
+  import: test-common
+  type: exitcode-stdio-1.0
+  main-is: QFTTest.hs
+  other-modules: Generators
+
+test-suite SamplingTest
+  import: test-common
+  type: exitcode-stdio-1.0
+  build-depends:
+    random,
+    vector
+  main-is: SamplingTest.hs
+  other-modules: Generators
+
+test-suite MPSTest
+  import: test-common
+  type: exitcode-stdio-1.0
+  build-depends:
+    vector
+  main-is: MPSTest.hs
+  other-modules: Generators
+
