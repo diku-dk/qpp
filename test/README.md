@@ -20,6 +20,7 @@ qualified import aliases used in the test files.
 | `MatrixPrepTest` | Pure helpers in `Programs.MatrixPreparation` (`toBitString`, `splitList`, `padToPowerOf2`); `buildRowQOp` row preparation; `matrixPrep` block encoding correctness and unitarity; three-backend agreement on prepared circuits. |
 | `SamplingTest` | `sampleAll` / `measure1` / diagonal-MPS sampling: determinism, index mapping, Born-rule agreement, cross-method and cross-backend histograms, truncation safety. |
 | `AlgebraTest` | Simplifier preservation, adjoint distribution, and operator-algebra laws, each checked under all three backends; also checks that the shared shrinkers terminate. |
+| `TypeCheckTest` | QOp widths, malformed subterms, permutations, exact Pauli-fragment decisions, and conservative adjoint-phase proofs; checks phases and accepted rotation axes against dense matrix semantics, including anticommutation and conjugation. |
 | `QFTTest` | QFT-specific identities and three-backend agreement on `qft n`. |
 
 ## Generators (in `Generators.hs`)

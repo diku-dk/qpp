@@ -1,4 +1,4 @@
--- | Umbrella module for the symbolic layer: syntax, rewriting and
+-- | Umbrella module for the symbolic layer: syntax, type-checking, rewriting and
 --   pretty-printing.
 --
 --   No semantics is re-exported here on purpose — a program runs against
@@ -8,10 +8,12 @@
 --   those modules follow.
 module QPP(
     module QPP.Syntax,
+    module QPP.TypeCheck,
     module QPP.Rewrite,
     module QPP.PrettyPrint
   ) where
 
 import QPP.Syntax
+import QPP.TypeCheck
 import QPP.Rewrite
 import QPP.PrettyPrint
