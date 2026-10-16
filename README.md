@@ -22,8 +22,9 @@ data QOp
   | Adjoint QOp         -- adj a
 ```
 
-Angles are rational multiples of π, so `R Z (1/2)` is exactly S and
-`R Z (1/4)` exactly T. There is no SWAP constructor; the swap of two adjacent
+Angles are rational multiples of π. `R Z (1/2)` and `R Z (1/4)` equal S and T
+up to global phases; `C (Phase (1/2))` and `C (Phase (1/4))` give S and T
+exactly. There is no SWAP constructor; the swap of two adjacent
 qubits is `Permute [1,0]`.
 
 The indices in `Permute` refer to the operator's own qubits, not to positions
@@ -232,6 +233,89 @@ To have it validated, give `OpT` a `Convertible OpT CMat` instance and add
 the module to `qpp/test/BackendValidation.hs`, which compares each backend it
 imports against the dense reference on random operators. The convention is
 spelled out in the header comment of `QPP.Semantics`.
+
+### Exact cyclotomic evaluation
+
+`QPP.Semantics.Exact.Matrix` constructs exact dense matrices;
+`QPP.Semantics.Exact.Statevector` applies the same `QOp` terms directly to
+amplitudes. Both use `QPP.Exact.Scalar` and the shared `QPP.Exact.State`
+representation. `QOp` and its `Rational` angles are unchanged.
+
+```haskell
+import QPP.Syntax (QOp(..))
+import QPP.Exact.Types
+import qualified QPP.Exact.Scalar as S
+import qualified QPP.Semantics.Exact.Statevector as E
+
+example = do
+  let limits = defaultLimits
+  input <- E.ket limits [False]       -- qubit 0 is the most significant bit
+  op <- E.evalOp limits (R H (1/3))
+  output <- E.apply limits op input
+  squaredNorm <- E.normSquared limits output
+  pure (E.amplitudes output, S.asRational squaredNorm)  -- norm squared = Just 1
+```
+
+Switch the qualified backend import to `QPP.Semantics.Exact.Matrix` to
+run the same example through dense evaluation. Exact `ket` uses `[Bool]`,
+and the checked functions return `Result a = Either ExactError a`. Unlike the
+numerical program runners, `evalProg limits program input` has no RNG:
+it preflights the whole program and accepts only `Unitary` steps, reporting
+zero-based step indices for errors. It rejects `Measure` and `Initialize`,
+including empty wire lists. An empty program returns its input.
+Statevector `evalOp` compiles gate constants once; `apply` reuses that plan
+or embeds its constants into a larger common field. Both backends share
+coefficient-buffer operations while retaining their own quantum shapes.
+
+The symbolic type checker validates each operator, including composite
+rotation axes. Zero-angle rotations accept any well-formed axis, as in
+`QPP.TypeCheck`. Every global phase is retained, including zero-qubit
+`Phase` terms and identity-axis rotations under control.
+
+The linear API provides `scale`, `add`, `sub`, `tensor`, `inner`,
+`normSquared`, and `equal`, along with `fromAmplitudes`, `amplitudes`,
+and checked `amplitude` access. Vectors need not be normalized. Matrix
+also provides `entry`, `entries`, `fromRows`, `addOp`, `scaleOp`,
+`composeOp`, `adjointOp`, `innerOp`, `normSquaredOp`, and `equalOp`.
+Its operator inner product is Frobenius; arbitrary matrix linear
+combinations need not be unitary. The existing numerical `HilbertSpace`
+class is unchanged: these checked operations do not require `Floating`,
+`Complex RealT`, square roots, or normalization.
+
+Scalars have private, reduced rational coordinates modulo the cyclotomic
+polynomial, with a distinguished complex embedding. Use `S.rational`,
+`S.rootOfUnity`, `S.phase`, or `S.fromCoordinates` to construct values;
+`S.add`, `S.mul`, `S.inverse`, `S.conjugate`, and `S.equal` perform checked
+exact arithmetic. Equality across fields promotes to a common field;
+resource exhaustion is an error, not inequality. There is no `Eq` or
+`Floating` instance. `S.approximate` is a lossy observation function and
+is never used by evaluation, comparison, or zero tests.
+Inversion uses a normalized polynomial Euclidean algorithm: each nonzero
+remainder and its Bézout coefficient are divided by the remainder's leading
+coefficient together. This curbs avoidable intermediate coefficient growth.
+
+This prototype uses a dense power basis and one field per state/matrix.
+Field degree can grow independently of qubit count or entanglement:
+rotation denominators 101 and 103 give a sufficient field of degree
+40,800. `defaultLimits` bounds root indices at 4096, degree at 256,
+conservative coefficient-workspace estimates at 2,000,000 rational slots,
+and integer coefficients/intermediates at 4096 bits. These are explicit
+representation limits, not wall-time or heap-byte guarantees. Validation
+checks retained storage; operations separately reserve their temporary
+buffers. Empty programs and same-field equality need no arithmetic workspace.
+Existing field contexts are reused, including when constructed under larger
+limits; their retained values must still fit the current limits. Cancellation
+may make an estimate larger than the ultimately needed result. Raise
+limits deliberately, or use smaller angle denominators. Sparse storage,
+cached embeddings, local fields, and field descent remain student-project
+directions; the prototype never substitutes a numerical approximation.
+
+Run `cabal run ExactEvaluation` for the phased-Bell example from the paper,
+including exact matrix/direct agreement and probabilities `3/4` and `1/4`
+after interference. Run `cabal test ExactTest` for the exact validation suite,
+including polynomial identities, larger-field inverses, embedding composition,
+and resource-boundary regressions. Random generators shrink failing examples
+while preserving field coordinates and quantum shapes.
 
 ## Compiler passes and analyses
 

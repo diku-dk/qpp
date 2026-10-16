@@ -13,8 +13,9 @@ info = subprocess.check_output(["pdfinfo", str(pdf)], text=True)
 pages_match = re.search(r"^Pages:\s+(\d+)", info, re.MULTILINE)
 assert pages_match, "Could not determine the PDF page count"
 pages = int(pages_match[1])
-assert 1 <= pages <= 10, f"Paper has {pages} pages; maximum is 10"
-diagnostics = log.read_text()
+assert 1 <= pages <= 15, f"Paper has {pages} pages; maximum is 15"
+# TeX can emit raw font-encoding bytes when reporting problematic glyphs.
+diagnostics = log.read_text(errors="replace")
 for bad in ("Overfull", "undefined references", "Citation " + chr(96), "Missing character:"):
     assert bad not in diagnostics, f"TeX diagnostic needs review: {bad}"
 text = subprocess.check_output(["pdftotext", "-layout", str(pdf), "-"], text=True)

@@ -42,6 +42,13 @@ library
       QPP.Semantics
       QPP.Semantics.Matrix
       QPP.Semantics.Statevector
+      -- Exact cyclotomic arithmetic and checked unitary evaluation:
+      QPP.Exact.Types
+      QPP.Exact.Scalar
+      QPP.Exact.State
+      QPP.Exact.Checked
+      QPP.Semantics.Exact.Matrix
+      QPP.Semantics.Exact.Statevector
       --QPP.Semantics.StateHmatrix
       QPP.MPS
       QPP.MPS.Diagonal
@@ -65,6 +72,11 @@ library
 
     other-modules:
       QPP.TypeCheck.Pauli
+      QPP.Exact.Internal.Scalar
+      QPP.Exact.Internal.Buffer
+      QPP.Exact.Internal.Evaluation
+      QPP.Exact.Internal.State
+      QPP.Exact.Internal.Gates
 
     build-depends:  
         base,
@@ -94,6 +106,10 @@ common exercises-common
 executable NoCloning
   import: exercises-common
   main-is: NoCloning.hs
+
+executable ExactEvaluation
+  import: exercises-common
+  main-is: ExactEvaluation.hs
 
 
 executable ProgramInversion
@@ -286,6 +302,11 @@ test-suite TypeCheckTest
   type: exitcode-stdio-1.0
   main-is: TypeCheckTest.hs
   other-modules: Generators
+
+test-suite ExactTest
+  import: test-common
+  type: exitcode-stdio-1.0
+  main-is: ExactTest.hs
 
 test-suite QFTTest
   import: test-common
