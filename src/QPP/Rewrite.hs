@@ -11,7 +11,9 @@ cleanOnes op = case op of
     Id n | n <= 0 -> One
     Phase 0       -> Id 0
     C (Id n)      -> Id (n+1)
-    R (Id n) _    -> Id n -- TODO: Include phases: C and <+> can make them relative
+    R a 0         -> Id (op_qubits a)
+    -- exp(-i*pi*q/2 * I) carries a phase; C and DirectSum make it relative.
+    R (Id n) q    -> Tensor (Phase (-q/2)) (Id n)
     Tensor    (Id m) (Id n) -> Id (m+n)
     Tensor (Tensor a (Id m)) (Id n) -> Tensor a (Id (m+n)) -- Associate Identities to the right
     Tensor (Id m) (Tensor (Id n) b) -> Tensor (Id (m+n)) b -- Associate Identities to the left
@@ -24,7 +26,6 @@ cleanOnes op = case op of
 
     -- Hidden identities
     Permute ks | ks == [0..length ks -1] -> Id (length ks) -- Identity permutation
-    R a 0        -> Id (op_qubits a)
     -- Below we just recurse. 
     Tensor  a b           -> Tensor    (cleanOnes a) (cleanOnes b)
     DirectSum a b         -> DirectSum (cleanOnes a) (cleanOnes b)

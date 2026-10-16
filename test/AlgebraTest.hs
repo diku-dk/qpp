@@ -1,8 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 -- | Algebraic identities of the QOp algebra and the simplifier rewrite rules.
---   Each property checks that two QOp expressions evaluate to the same matrix
---   under all three backends (see `eqMat`). High coverage for the (largely
---   structural) simplifier and `dagger`.
+--   Properties compare matrix denotations across all three backends (see
+--   `eqMat`); identity-axis regressions use the original dense semantics as
+--   their oracle. High coverage for the structural simplifier and `dagger`.
 --
 --   Grouped per the README backlog:
 --     * Simplifier preservation — every rewrite preserves `evalOp`.
@@ -87,17 +87,43 @@ prop_doComposes_preserves (RandomQOp _ op) = eqMat op (doComposes op)
 prop_pushComposes_preserves :: RandomQOp -> Property
 prop_pushComposes_preserves (RandomQOp _ op) = eqMat op (pushComposes op)
 
--- NOTE: `cleanop` (fixpoint composition of all 5 simplifiers) used to look like
--- it never converged. The hang was QuickCheck shrinking forever, not the
--- rewrites. With terminating shrinkers the property fails in about half the
--- runs and shrinks to `R (Id 2) 1`: `cleanOnes` rewrites `R (Id n) θ` to `Id n`,
--- dropping the phase e^{-iπθ/2} (see the TODO there). A single `cleanOnes`
--- pass never meets that shape from the generator, but the fixpoint does, after
--- `Id 1 ⊗ Id 1` in a Pauli axis has merged into `Id 2`. Skipped until the rule
--- keeps the phase.
---
--- prop_cleanop_preserves :: RandomQOp -> Property
--- prop_cleanop_preserves (RandomQOp _ op) = eqMat op (cleanop op)
+prop_cleanop_preserves :: RandomQOp -> Property
+prop_cleanop_preserves (RandomQOp _ op) = eqMat op (cleanop op)
+
+-- Identity-axis rotations carry a phase, even on zero qubits. Control and
+-- direct sum make that phase relative, so equality up to phase is insufficient.
+identityRotationTests :: TestTree
+identityRotationTests = testGroup "Identity-axis phases"
+  [ testGroup name
+      [ testProperty "preserves phase at widths 0--3 and rational angles" $
+          forAll (choose (0, 3)) $ \n ->
+          forAll genRat $ \q ->
+            let rotation = R (Id n) q
+            -- The original dense semantics is the oracle: MPS cannot
+            -- evaluate an unsimplified zero-qubit rotation.
+            in conjoin
+              [ counterexample (context ++ " [" ++ backend ++ "]")
+                  (MS.evalOp op ~~ actual)
+              | (context, op) <- [ ("bare", rotation)
+                                 , ("tensor", Tensor rotation (Id 1))
+                                 , ("controlled", C rotation)
+                                 , ("direct sum", DirectSum (Id n) rotation)
+                                 ]
+              , let rewritten = simplify op
+              , (backend, actual) <- [ ("MS", MS.evalOp rewritten)
+                                     , ("MPS", to (MPS.evalOp rewritten) :: CMat)
+                                     , ("SV", to (SV.evalOp rewritten) :: CMat)
+                                     ]
+              ]
+      , testProperty "C (R (Id 0) 2) still denotes Z" $
+          once $ eqMat (simplify (C (R (Id 0) 2))) Z
+      , testProperty "Id 0 + R (Id 0) 2 still denotes Z" $
+          once $ eqMat (simplify (DirectSum (Id 0) (R (Id 0) 2))) Z
+      , testCase "zero-angle rotation remains an identity" $
+          simplify (R (Id 2) 0) @?= Id 2
+      ]
+  | (name, simplify) <- [("cleanOnes", cleanOnes), ("cleanop", cleanop)]
+  ]
 
 simplifierTests :: TestTree
 simplifierTests = testGroup "Simplifier preservation"
@@ -106,6 +132,12 @@ simplifierTests = testGroup "Simplifier preservation"
   , testProperty "liftComposes preserves evalOp"   prop_liftComposes_preserves
   , testProperty "doComposes preserves evalOp"     prop_doComposes_preserves
   , testProperty "pushComposes preserves evalOp"   prop_pushComposes_preserves
+  , testProperty "cleanop preserves evalOp"        prop_cleanop_preserves
+  , identityRotationTests
+  , testProperty "cleanop preserves a phase exposed by merging identity factors" $
+      once $
+        let op = R (Tensor (Id 1) (Id 1)) 1
+        in eqMat op (cleanop op)
     -- Regression: pushComposes used to fuse tensor factors of different widths.
   , testCase "pushComposes keeps mismatched tensor splits" $
       let op = Compose (Tensor X (Id 2)) (Tensor (Id 2) X)

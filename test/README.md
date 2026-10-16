@@ -67,12 +67,15 @@ group checks this against a size measure.
 
 ### `AlgebraTest`
 
-Every property compares the two sides under MS, MPS and SV (`eqMat`), so a
-failure names the backend that disagrees.
+Most properties compare both sides under MS, MPS and SV (`eqMat`), so a
+failure names the backend that disagrees. Identity-axis phase regressions
+compare the rewritten term in all three backends with the original dense
+semantics; this also covers zero-qubit rotations that MPS cannot evaluate
+before rewriting.
 
 | Group | Properties |
 |---|---|
-| Simplifier preservation | `cleanOnes`, `cleanAdjoints`, `liftComposes`, `doComposes`, `pushComposes` each preserve `evalOp`; `pushComposes` leaves `(a⊗b)∘(c⊗d)` alone when the tensor splits differ. |
+| Simplifier preservation | `cleanOnes`, `cleanAdjoints`, `liftComposes`, `doComposes`, `pushComposes`, and the combined `cleanop` preserve `evalOp`. Identity-axis rotations retain their phase under tensor, control, and direct sum, including after identity factors merge; `pushComposes` leaves `(a⊗b)∘(c⊗d)` alone when the tensor splits differ. |
 | Shrinkers terminate | Every `shrinkRat` and `shrinkQOp` candidate is strictly smaller under a size measure and keeps the arity. |
 | Adjoint distribution | `adj (a ∘ b) = adj b ∘ adj a`; `adj` distributes over `⊗`, `⊕`, `C`; `adj (R ax θ) = R ax (-θ)` for Pauli axes; `adj (Permute π) = Permute (permInvert π)`; `adj (adj a) = a`. |
 | Algebraic structure | `Compose`/`Tensor` associativity; identity laws for `Id n` and `One`; bifunctoriality `(a⊗b)∘(c⊗d) = (a∘c)⊗(b∘d)`; `(a⊕b)∘(c⊕d) = (a∘c)⊕(b∘d)`; `C a = Id n_a ⊕ a`. |
@@ -135,6 +138,9 @@ The current property suite has surfaced (and led to fixes for):
     and `c` act on different numbers of qubits, producing an ill-formed
     term. It showed up as a hang rather than a failure because the
     shrinkers never terminated.
+16. `cleanOnes` discarded the phase of `R (Id n) q`, changing controlled
+    and direct-sum operators. It now retains `Phase (-q/2) ⊗ Id n`;
+    the previously disabled `cleanop` preservation property is enabled.
 
 ## Backlog of invariants to add
 
@@ -143,12 +149,9 @@ case or a QuickCheck property over `RandomQOp`. The earlier backlog items
 (simplifier preservation, adjoint distribution, algebraic structure, gate,
 permutation, rotation and phase identities) now live in `AlgebraTest`.
 
-**Simplifier fixpoints** — the individual rules are covered; the composites
-are not.
+**Simplifier fixpoints** — individual rules and `cleanop` are covered;
+arbitrary combinations remain.
 
-- `evalOp (cleanop op) ≈ evalOp op` (fixpoint composition). Written but
-  disabled in `AlgebraTest`: it fails because `cleanOnes` rewrites
-  `R (Id n) θ` to `Id n` and drops the phase.
 - `evalOp (simplifyFixpoint n rules op) ≈ evalOp op` for any rule list.
 
 **Norm and trace preservation**
