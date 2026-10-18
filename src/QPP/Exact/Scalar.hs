@@ -6,16 +6,18 @@ module QPP.Exact.Scalar
   , rational, rootOfUnity, phase, rotationCoefficients, fromCoordinates
   , fieldIndex, fieldDegree, coefficients, cyclotomicPolynomial, asRational
   , add, sub, mul, divide, negate, conjugate, inverse, pow, embed, equal, isZero
-  , approximate
+  , compareReal, approximate
   ) where
 
 import Prelude hiding (negate)
+import Control.Monad (unless)
 import Data.Complex (Complex, cis)
 import Data.Ratio (numerator, denominator)
 import qualified Data.Vector as V
 import QPP.Exact.Types
 import QPP.Exact.Internal.Scalar (Cyclo(..), Coeff, Work(..))
 import qualified QPP.Exact.Internal.Scalar as S
+import qualified QPP.Exact.Internal.Order as Order
 
 fieldIndex :: Cyclo -> Integer
 fieldIndex (Cyclo f _) = S.index f
@@ -124,6 +126,16 @@ equal :: Limits -> Cyclo -> Cyclo -> Result Bool
 equal l x@(Cyclo f a) y@(Cyclo g b)
   | S.index f == S.index g = validate l x >> validate l y >> pure (a == b)
   | otherwise = binary l PolynomialWork (\_ a' b' -> pure (a' == b')) x y
+
+-- | Exact ordering of real values in the distinguished embedding. Nonreal
+-- inputs are rejected. Refinement may fail with ResourceLimit, never a guess.
+compareReal :: Limits -> Cyclo -> Cyclo -> Result Ordering
+compareReal l = binary l PolynomialWork $ \f a b -> do
+  ac <- S.conjugateC l f a
+  bc <- S.conjugateC l f b
+  unless (a == ac && b == bc) (Left (InvalidInput "compareReal expects real scalars"))
+  difference <- S.subC l a b
+  Order.signReal l f difference
 
 -- | Lossy observation only; never used by equality, evaluation or zero tests.
 -- Large rational coordinates can overflow or suffer catastrophic cancellation.

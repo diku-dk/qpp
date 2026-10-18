@@ -38,6 +38,109 @@ methods of the `Operator` class, implemented by `QOp` and by the dense
 backend's matrix type `CMat`. A function written against the class builds a
 term or a matrix depending on the type it is used at.
 
+### General finite-dimensional unitaries
+
+`QPP.UOp` provides the smaller `UOp` syntax for unitaries on arbitrary
+finite-dimensional spaces, including dimension zero. Products and direct
+sums take lists; `Compose d []` is the identity of matrix dimension `d`.
+Use a qualified import alongside `QPP`, since constructor names overlap:
+
+```haskell
+import qualified QPP.UOp as U
+
+x = U.PermuteSum [1,1] [1,0]
+z = U.directSum [U.identity 1, U.phase 1]
+u = U.compose 2 [U.R x (-1/2), z]
+-- U.showUOp u:
+-- "(R(PermuteSum [1,1] [1,0], -1/2) ∘ (I[1] ⊕ R(I[1], -2)))"
+```
+
+`R a t` means `exp(-i*pi*t*A/2)`, with the same sign and half angle as QOp,
+and a Hermitian axis unless `t` is zero. Scalar phase `U.phase t` still means
+`exp(i*pi*t)` and is represented by `R (identity 1) (-2*t)`.
+`U.dim` counts basis vectors,
+not qubits. The shared operator notation also works for `UOp`; its builders
+flatten nested lists without performing algebraic simplification.
+`U.fromQOp :: QOp -> Either TypeError U.UOp` checks and lowers a QOp,
+preserving its global phase. Apply `U.normalize` to the result to flatten
+associations, remove identities, collect scalar phases, simplify rotations,
+and fuse or cancel adjacent composition factors. It preserves relative phases
+inside direct sums. Non-scalar rotation angles use `(-2,2]` modulo four;
+scalar phase parameters use `(-1,1]` modulo two before encoding as `R`.
+Interchange lifts compositions out of tensors and direct sums, padding shorter
+operand lists with identities. This produces a sequence of parallel layers.
+It is a structural normal form, not a complete test for operator equality;
+tensor products of direct sums stay factored.
+
+Normalization assumes well-formed input; it does not validate raw UOp syntax.
+General UOp validation and semantics are not yet implemented. Run
+`cabal run QFTSyntax -- 4` to write the QOp pretty print, raw and pretty UOp,
+and `uop.normalized.raw.txt` / `uop.normalized.pretty.txt` into `output/qft4/`.
+The normalized pretty print puts each outer composition factor on its own line.
+Use `16` for the corresponding sixteen-qubit example.
+
+### TikZ operator diagrams
+
+`showTikZQOp` and `showTikZUOp` produce LaTeX fragments for both syntaxes:
+
+```haskell
+import qualified QPP as Q
+import qualified QPP.UOp as U
+
+writeFile "qop.tex" (Q.showTikZQOp (Q.Compose (Q.C Q.X) (Q.Tensor Q.H Q.I)))
+writeFile "uop.tex" (U.showTikZUOp (U.DirectSum [U.identity 1, U.phase (1/4)]))
+```
+
+Copy `latex/qpp-tikz.sty` beside the document, load `\usepackage{qpp-tikz}`,
+then use `\input{qop.tex}`. Each operator is a node in a syntax tree, with its
+operands as children from left to right. Outlined nodes use pale constructor
+colors, joined by compact horizontal branches with vertical drops. The rightmost
+child of a composition acts first. Printing preserves the input syntax,
+including arbitrary UOp dimensions and zero-dimensional spaces, and does not
+type-check or normalize it.
+
+Every node has a gray qubit count outside its outline, such as `[⊕]: 4`.
+Counts assume well-formed input and are computed from the children without
+building matrices.
+For UOp, dimension `2^n` gives count `n`; other dimensions are explicitly labelled
+`d=...`. Thus dimension one has zero qubits, while dimension zero is labelled
+`d=0`. Use `showTikZQOpWithoutQubits` or `showTikZUOpWithoutQubits` to omit
+the outside annotations.
+
+Restyle diagrams with ordinary TikZ keys, without changing generated files:
+
+```latex
+\tikzset{
+  qpp/gate/.append style={fill=yellow!20},
+  qpp/node/.append style={font=\footnotesize},
+  qpp/edge/.append style={thick, draw=blue!60!black},
+  qpp/annotation/.append style={text=black!70}
+}
+\forestset{qpp tree/.append style={for tree={l sep=5mm, s sep=7mm, fork sep=2.5mm}}}
+```
+
+Shared TikZ styles are `qpp/node`, `qpp/edge`, and `qpp/annotation`;
+the Forest style `qpp tree` controls layout: `l sep` sets the vertical gap,
+`s sep` the horizontal spacing,
+and `fork sep` the drop from the parent to the horizontal branch. Constructor
+styles are `gate`, `identity`, `phase`, `permutation`,
+`tensor`, `sum`, `compose`, `rotation`, `control`, and `adjoint`,
+each under `qpp/`. Both syntaxes use `R(t)` for the same rotation convention;
+identity subscripts and UOp composition subscripts are matrix dimensions.
+
+The implementation in `QPP.PrettyPrint.TikZ` translates each syntax into
+`Data.Tree`, then recursively emits [Forest](https://ctan.org/pkg/forest)'s bracket
+notation. Forest handles spacing and edges; the `.sty` file holds the styles
+and measures annotation widths to keep neighboring nodes clear.
+The Haskell code never estimates text widths or calculates coordinates.
+
+Run `cabal run TikZOperators` from the repository root to generate examples
+and QFT fragments in `output/tikz/`. Run `make -C latex` to generate them and
+compile the gallery to `output/pdf/operator-diagrams.pdf` (requires `latexmk`
+and a TeX installation with Forest). The gallery source is
+`latex/operator-diagrams.tex`. Large terms retain their full structure;
+they may need a larger page or explicit decomposition for presentation.
+
 ### Type-checking
 
 `typeCheck`, exported by `QPP` and `QPP.TypeCheck`, checks a `QOp` and returns
@@ -247,29 +350,73 @@ import QPP.Exact.Types
 import qualified QPP.Exact.Scalar as S
 import qualified QPP.Semantics.Exact.Statevector as E
 
+output = E.apply (E.evalOp (R H (1/3))) (E.ket [0])
+
+-- Observation and linear algebra retain their checked scalar API.
 example = do
-  let limits = defaultLimits
-  input <- E.ket limits [False]       -- qubit 0 is the most significant bit
-  op <- E.evalOp limits (R H (1/3))
-  output <- E.apply limits op input
-  squaredNorm <- E.normSquared limits output
+  squaredNorm <- E.normSquared defaultLimits output
   pure (E.amplitudes output, S.asRational squaredNorm)  -- norm squared = Just 1
 ```
 
 Switch the qualified backend import to `QPP.Semantics.Exact.Matrix` to
-run the same example through dense evaluation. Exact `ket` uses `[Bool]`,
-and the checked functions return `Result a = Either ExactError a`. Unlike the
-numerical program runners, `evalProg limits program input` has no RNG:
-it preflights the whole program and accepts only `Unitary` steps, reporting
-zero-based step indices for errors. It rejects `Measure` and `Initialize`,
-including empty wire lists. An empty program returns its input.
+run the same example through dense evaluation. The ordinary `ket`, `evalOp`,
+`apply`, and `evalProg` signatures match the numerical backends and use
+`defaultLimits`. `ket` accepts `[Int]` containing only zeroes and ones;
+qubit 0 is the most significant bit. Failures raise errors with a call stack.
+Use `ketWithLimits`, `evalOpWithLimits`, `applyWithLimits`, and
+`evalProgWithLimits` for explicit limits and recoverable failures:
+these return `Result a = Either ExactError a`.
+
+`evalProg program input rng` preflights the whole program and supports
+`Unitary`, `Measure`, and `Initialize`, returning `(output, outcomes, remainingRng)`.
+The checked form is `evalProgWithLimits limits program input rng`.
+`evalStep` and `measure1` also have the conventional backend signatures and
+checked `WithLimits` variants. Step errors have zero-based indices; standalone
+`evalStepWithLimits` uses index zero. An empty program preserves its input and RNG.
+
+Measurement retains the **unnormalized projected vector**. For nonzero input
+`v`, outcome `b` has probability `normSquared (P_b v) / normSquared v`, and the
+stored output is `P_b v`. Normalizing this vector could leave the cyclotomic
+field. `amplitudes`, `inner`, `normSquared`, and `equal` still refer to the
+stored vector, not a normalized vector or an equivalence class of states.
+Use `E.probability limits state wire outcome` for a conditional probability;
+squared amplitudes alone are probabilities only when the stored norm is one.
+For example, measuring the Bell state can leave `[h,0,0,0]`, with `h=1/sqrt(2)`
+and squared norm `1/2`; measuring the same bit again returns zero with probability one.
+
+Each measurement consumes one finite RNG value in `[0,1)`, even for a certain
+outcome. The sampler treats that `Double` as its exact rational value and
+compares it with the exact probability using certified interval refinement;
+it never rounds a probability to `Double`. Threshold equality selects one.
+This retains the other backends' finite-precision RNG convention. `Measure ks`
+processes `reverse ks`, prepending outcomes so that the new block is in `ks`
+order. `Initialize ks values` measures those wires, applies X where the sample
+differs from the target, and hides its measurement outcomes while consuming RNG.
+Initialization wires must be distinct and match the number of target values.
+Empty wire lists are no-ops. A zero vector cannot be measured. Reset returns one
+sampled branch; averaging over its hidden outcomes can produce a mixed state.
+Hidden samples affect the stored squared norm; it need not equal the probability
+of the recorded outcomes.
+
 Statevector `evalOp` compiles gate constants once; `apply` reuses that plan
 or embeds its constants into a larger common field. Both backends share
 coefficient-buffer operations while retaining their own quantum shapes.
+The scalar-parameterized plan derives folds and traversals for checking and
+embedding its constants.
+
+To read the direct evaluator, start with `runPlan` in
+[`Exact/Statevector.hs`](src/QPP/Semantics/Exact/Statevector.hs): its cases
+give the action of each prepared operator on a vector.
+[`Internal/Vector.hs`](src/QPP/Exact/Internal/Vector.hs) implements the array
+operations, including the row/column algorithm for tensor application.
+[`Internal/Plan.hs`](src/QPP/Exact/Internal/Plan.hs) prepares exact constants,
+pushes adjoints to the leaves, and accounts for execution storage.
 
 The symbolic type checker validates each operator, including composite
-rotation axes. Zero-angle rotations accept any well-formed axis, as in
-`QPP.TypeCheck`. Every global phase is retained, including zero-qubit
+rotation axes. After full validation, zero-angle rotations become identities
+before field selection: unused axes cannot cause field growth. They accept
+any well-formed axis, as in `QPP.TypeCheck`. Every global phase is retained,
+including zero-qubit
 `Phase` terms and identity-axis rotations under control.
 
 The linear API provides `scale`, `add`, `sub`, `tensor`, `inner`,
@@ -287,7 +434,9 @@ polynomial, with a distinguished complex embedding. Use `S.rational`,
 `S.rootOfUnity`, `S.phase`, or `S.fromCoordinates` to construct values;
 `S.add`, `S.mul`, `S.inverse`, `S.conjugate`, and `S.equal` perform checked
 exact arithmetic. Equality across fields promotes to a common field;
-resource exhaustion is an error, not inequality. There is no `Eq` or
+resource exhaustion is an error, not inequality. `S.compareReal` orders real
+cyclotomic values with certified bounds and rejects nonreal inputs; exhausted
+comparison precision is also a resource error. There is no `Eq`, `Ord`, or
 `Floating` instance. `S.approximate` is a lossy observation function and
 is never used by evaluation, comparison, or zero tests.
 Inversion uses a normalized polynomial Euclidean algorithm: each nonzero
@@ -303,6 +452,10 @@ and integer coefficients/intermediates at 4096 bits. These are explicit
 representation limits, not wall-time or heap-byte guarantees. Validation
 checks retained storage; operations separately reserve their temporary
 buffers. Empty programs and same-field equality need no arithmetic workspace.
+Direct evaluation counts retained plan constants separately from live vectors:
+sequential composition takes the maximum of the child workspace bounds, while
+rotations and tensor operations account for saved vectors. Subtraction combines
+coordinates directly, without allocating a negated input vector.
 Existing field contexts are reused, including when constructed under larger
 limits; their retained values must still fit the current limits. Cancellation
 may make an estimate larger than the ultimately needed result. Raise
@@ -311,8 +464,8 @@ cached embeddings, local fields, and field descent remain student-project
 directions; the prototype never substitutes a numerical approximation.
 
 Run `cabal run ExactEvaluation` for the phased-Bell example from the paper,
-including exact matrix/direct agreement and probabilities `3/4` and `1/4`
-after interference. Run `cabal test ExactTest` for the exact validation suite,
+including exact matrix/direct agreement, probabilities `3/4` and `1/4`
+after interference, and measurement followed by reset. Run `cabal test ExactTest` for the exact validation suite,
 including polynomial identities, larger-field inverses, embedding composition,
 and resource-boundary regressions. Random generators shrink failing examples
 while preserving field coordinates and quantum shapes.

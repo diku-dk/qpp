@@ -2,174 +2,216 @@
 -- general square matrices via fromRows/linear combinations; only evalOp's
 -- checked QOp construction guarantees unitarity.
 module QPP.Semantics.Exact.Matrix
-  ( OpT, evalOp, apply, evalProg
+  ( OpT, evalOp, apply, evalStep, evalProg
+  , evalOpWithLimits, applyWithLimits, evalStepWithLimits, evalProgWithLimits
   , opQubits, opFieldIndex, entry, entries, fromRows
   , addOp, scaleOp, innerOp, normSquaredOp, equalOp, adjointOp, composeOp
   , module QPP.Exact.State
   ) where
 
-import Control.Monad (foldM, unless)
-import Data.Bifunctor (first)
-import qualified Data.Vector as V
-import QPP.Syntax (QOp, Program)
+import qualified Control.Applicative as A
+import Control.Monad (unless)
+import GHC.Stack (HasCallStack, withFrozenCallStack)
+import QPP.Exact.Types (orFail)
+import QPP.Syntax (QOp(..), Program, Step, RNG, Outcomes, op_qubits, HasQubits(..))
 import QPP.Exact.State
 import qualified QPP.Exact.Checked as C
-import QPP.Exact.Internal.Scalar (Field, Coeff, Cyclo(..))
+import QPP.Exact.Internal.Scalar (Field, Cyclo(..))
 import qualified QPP.Exact.Internal.Scalar as S
 import qualified QPP.Exact.Internal.State as St
 import QPP.Exact.Internal.Buffer (Buffer(..))
 import qualified QPP.Exact.Internal.Buffer as B
-import QPP.Exact.Internal.Evaluation (prepareProgram)
-import QPP.Exact.Internal.Gates (primitive, permuteIndex)
+import qualified QPP.Exact.Internal.Evaluation as E
+import QPP.Exact.Internal.Gates (primitive)
+import qualified QPP.Exact.Internal.Matrix as M
 
 data OpT = OpT !Int !Buffer deriving (Show)
+
+instance HasQubits OpT where n_qubits = opQubits
+
+-- | Check the complete term and choose one field before interpreting it.
+evalOp :: HasCallStack => QOp -> OpT
+evalOp op = withFrozenCallStack $ orFail "evalOp" (evalOpWithLimits defaultLimits op)
+
+evalOpWithLimits :: Limits -> QOp -> Result OpT
+evalOpWithLimits limits op = do
+  checked <- C.checkOp limits op
+  field <- S.makeField limits (C.fieldIndex checked)
+  matrixBudget limits field checked
+  evaluate limits field checked
+
+-- Interpret the validated QOp directly, using the numerical backend's notation.
+-- The local matrix operations propagate Result failures in one common field;
+-- validation, promotion and storage layout stay outside the semantic clauses.
+evaluate :: Limits -> Field -> C.CheckedOp -> Result OpT
+evaluate limits field checked = pack (C.qubits checked) field <$> eval (C.toQOp checked)
+  where
+    eval op = case op of
+      Id n    -> ident (2^n)
+      Phase q -> phase q
+
+      X  -> gate C.X
+      Y  -> gate C.Y
+      Z  -> gate C.Z
+      H  -> gate C.H
+      SX -> gate C.SX
+
+      -- R_A(q) = c I + d A, where c = cos(pi*q/2), d = -i*sin(pi*q/2).
+      R axis q -> do
+        (c,d) <- S.rotationC limits field q
+        if S.isZeroC d
+          then c .* ident (2 ^ op_qubits axis) -- no axis evaluation for scalar rotations
+          else do
+            a <- eval axis
+            (c .* ident (M.dimension a)) .+ (d .* pure a)
+
+      Permute ks -> pure (M.permutation field ks)
+
+      C a -> do
+        mat <- eval a
+        ident (M.dimension mat) <+> pure mat
+
+      Tensor a b    -> eval a ⊗ eval b
+      Compose a b   -> eval a ∘ eval b
+      DirectSum a b -> eval a <+> eval b
+      Adjoint a     -> adj (eval a)
+
+    ident dim = pure (M.identity field dim)
+    phase q = M.scalar <$> S.phaseC limits field q
+    gate g = M.Matrix 2 <$> primitive limits field g
+
+    -- The same matrix notation as Semantics.Matrix, lifted through explicit
+    -- arithmetic failures. These are local operations, not partial instances.
+    (⊗) = binary (M.tensor limits field)
+    (∘) = binary (M.multiply limits field)
+    (<+>) = A.liftA2 (M.directSum field)
+    (.+) = binary (M.add limits)
+    value .* matrix = matrix >>= M.scale limits field value
+    adj matrix = matrix >>= M.adjoint limits field
+
+    infixr 8 ⊗, .*
+    infixr 7 <+>, .+
+    infixr 6 ∘
+
+    binary operation left right = do
+      a <- left
+      b <- right
+      operation a b
+
+apply :: HasCallStack => OpT -> StateT -> StateT
+apply op state = withFrozenCallStack $ orFail "apply" (applyWithLimits defaultLimits op state)
+
+applyWithLimits :: Limits -> OpT -> StateT -> Result StateT
+applyWithLimits limits (OpT n matrix) state@(St.StateT _ input) = do
+  unless (n == qubits state) (Left (WidthMismatch n (qubits state)))
+  (mat,vector) <- B.preparePair limits S.PolynomialWork (B.count input) matrix input
+  applyIn limits (OpT n mat) (St.StateT n vector)
+
+-- Inputs already share a field; preparation and checks belong to the caller.
+applyIn :: Limits -> OpT -> StateT -> Result StateT
+applyIn limits op@(OpT n (Buffer field _)) (St.StateT _ (Buffer _ vector)) = do
+  result <- M.apply limits field (dense op) vector
+  pure (St.StateT n (Buffer field result))
+
+evalProg :: HasCallStack => Program -> StateT -> RNG -> (StateT, Outcomes, RNG)
+evalProg program state rng = withFrozenCallStack $
+  orFail "evalProg" (evalProgWithLimits defaultLimits program state rng)
+
+evalProgWithLimits :: Limits -> Program -> StateT -> RNG -> Result (StateT, Outcomes, RNG)
+evalProgWithLimits limits =
+  E.evalProgWith limits (matrixBudget limits) (applyChecked limits)
+
+evalStep :: HasCallStack => (StateT, Outcomes, RNG) -> Step -> (StateT, Outcomes, RNG)
+evalStep input step = withFrozenCallStack $
+  orFail "evalStep" (evalStepWithLimits defaultLimits input step)
+
+evalStepWithLimits :: Limits -> (StateT, Outcomes, RNG) -> Step -> Result (StateT, Outcomes, RNG)
+evalStepWithLimits limits =
+  E.evalStepWith limits (matrixBudget limits) (applyChecked limits)
+
+applyChecked :: Limits -> Field -> C.CheckedOp -> StateT -> Result StateT
+applyChecked limits field op state = do
+  matrix <- evaluate limits field op
+  applyIn limits matrix state
+
+-- Checked linear algebra also accepts nonunitary matrices imported by fromRows.
+-- Buffer operations handle common-field promotion for addition and scaling.
+addOp :: Limits -> OpT -> OpT -> Result OpT
+addOp limits a@(OpT n xs) b@(OpT _ ys) = do
+  sameWidth a b
+  OpT n <$> B.add limits xs ys
+
+scaleOp :: Limits -> Cyclo -> OpT -> Result OpT
+scaleOp limits value (OpT n buffer) = OpT n <$> B.scale limits value buffer
+
+composeOp :: Limits -> OpT -> OpT -> Result OpT
+composeOp limits a@(OpT n xs) b@(OpT _ ys) = do
+  sameWidth a b
+  (left,right) <- B.preparePair limits S.PolynomialWork (B.count xs) xs ys
+  let field = B.field left
+  pack n field <$> M.multiply limits field (dense (OpT n left)) (dense (OpT n right))
+
+adjointOp :: Limits -> OpT -> Result OpT
+adjointOp limits op@(OpT n buffer) = do
+  B.validate limits buffer
+  let field = B.field buffer
+  S.workspace limits field (2 * B.count buffer * toInteger (S.degree field))
+  pack n field <$> M.adjoint limits field (dense op)
+
+innerOp :: Limits -> OpT -> OpT -> Result Cyclo
+innerOp limits a@(OpT _ xs) b@(OpT _ ys) = do
+  sameWidth a b
+  B.inner limits xs ys
+
+normSquaredOp :: Limits -> OpT -> Result Cyclo
+normSquaredOp limits a = innerOp limits a a
+
+equalOp :: Limits -> OpT -> OpT -> Result Bool
+equalOp limits (OpT _ a) (OpT _ b) = B.equal limits a b
+
+-- Import and observation retain the common field and the quantum shape.
+fromRows :: Limits -> [[Cyclo]] -> Result OpT
+fromRows limits rows = do
+  n <- S.widthOfLength (length rows)
+  dim <- S.dimension limits n
+  S.slots limits (toInteger dim * toInteger dim)
+  unless (all ((== dim) . length) rows)
+    (Left (InvalidInput "matrix must be square with power-of-two dimensions"))
+  OpT n <$> B.fromScalars limits (concat rows)
 
 opQubits :: OpT -> Int
 opQubits (OpT n _) = n
 
 opFieldIndex :: OpT -> Integer
-opFieldIndex (OpT _ b) = S.index (B.field b)
+opFieldIndex (OpT _ buffer) = S.index (B.field buffer)
 
 -- | Complete exact rows, with field context attached to each observed scalar.
 entries :: OpT -> [[Cyclo]]
-entries (OpT n (Buffer f xs)) =
-  [[Cyclo f (xs V.! (i*d+j)) | j <- [0..d-1]] | i <- [0..d-1]]
-  where d = 2^n
+entries op@(OpT _ buffer) = map (map (Cyclo (B.field buffer))) (M.toRows (dense op))
 
 entry :: OpT -> Int -> Int -> Result Cyclo
-entry (OpT n (Buffer f xs)) i j
-  | i >= 0 && i < d && j >= 0 && j < d = pure (Cyclo f (xs V.! (i*d+j)))
+entry op@(OpT _ buffer) row column
+  | row >= 0 && row < dim && column >= 0 && column < dim =
+      pure (Cyclo (B.field buffer) (M.at matrix row column))
   | otherwise = Left (InvalidInput "matrix index out of bounds")
-  where d = 2^n
-
-fromRows :: Limits -> [[Cyclo]] -> Result OpT
-fromRows l rows = do
-  n <- S.widthOfLength (length rows)
-  d <- S.dimension l n
-  S.slots l (toInteger d * toInteger d)
-  unless (all ((== length rows) . length) rows)
-    (Left (InvalidInput "matrix must be square with power-of-two dimensions"))
-  OpT n <$> B.fromScalars l (concat rows)
-
-matrixBudget :: Limits -> Field -> C.CheckedOp -> Result ()
--- At each recursion level retain up to two child matrices and one result;
--- eight further buffers cover input promotion, application and block assembly.
-matrixBudget l f op = S.workspace l f $
-  (3 * toInteger (C.depth op) + 8) * d * d * toInteger (S.degree f)
-  where d = toInteger (C.dimension op)
-
-evalOp :: Limits -> QOp -> Result OpT
-evalOp l op = do
-  c <- C.checkOp l op
-  f <- S.makeField l (C.fieldIndex c)
-  matrixBudget l f c
-  evaluate l f c
-
--- Inputs and workspace have been preflighted. All recursive matrices share f.
-evaluate :: Limits -> Field -> C.CheckedOp -> Result OpT
-evaluate l f c = OpT (C.qubits c) . Buffer f <$> go c
   where
-    ident d = V.generate (d*d) $ \k -> if k `quot` d == k `rem` d then S.one f else S.zero f
-    go op = let d = C.dimension op in case C.view op of
-      C.Identity -> pure (ident d)
-      C.ScalarPhase q -> V.singleton <$> S.phaseC l f q
-      C.Primitive g -> primitive l f g
-      C.Rotation axis q -> do
-        (a,b) <- S.rotationC l f q
-        if S.isZeroC b
-          then pure (V.generate (d*d) (\k -> if k `quot` d == k `rem` d then a else S.zero f))
-          else do
-            xs <- go axis
-            V.imapM (\k x -> do
-              y <- S.mulC l f b x
-              if k `quot` d == k `rem` d then S.addC l a y else pure y) xs
-      C.Control child -> do
-        b <- go child
-        pure (block (d `quot` 2) (ident (d `quot` 2)) b)
-      C.BlockSum a b -> block (C.dimension a) <$> go a <*> go b
-      C.Composition a b -> do
-        xs <- go a
-        ys <- go b
-        multiply l f d xs ys
-      C.TensorProduct a b -> do
-        xs <- go a
-        ys <- go b
-        let da = C.dimension a
-            db = C.dimension b
-        V.generateM (d*d) $ \k -> do
-          let (i,j) = k `quotRem` d
-          S.mulC l f (xs V.! ((i `quot` db)*da+j `quot` db))
-                     (ys V.! ((i `rem` db)*db+j `rem` db))
-      C.Dagger a -> go a >>= transposeConjugate l f d
-      C.Permutation ks -> pure $ V.generate (d*d) $ \k ->
-        let (i,j) = k `quotRem` d
-        in if i == permuteIndex ks j then S.one f else S.zero f
-    block r a b = V.generate (4*r*r) $ \k ->
-      let (i,j) = k `quotRem` (2*r)
-      in if i < r && j < r then a V.! (i*r+j)
-         else if i >= r && j >= r then b V.! ((i-r)*r+j-r)
-         else S.zero f
+    matrix = dense op
+    dim = M.dimension matrix
 
-multiply :: Limits -> Field -> Int -> V.Vector Coeff -> V.Vector Coeff -> Result (V.Vector Coeff)
-multiply l f d a b = V.generateM (d*d) $ \k ->
-  let (i,j) = k `quotRem` d
-  in foldM (\acc t -> S.mulC l f (a V.! (i*d+t)) (b V.! (t*d+j)) >>= S.addC l acc)
-           (S.zero f) [0..d-1]
+-- Views of the same coefficient array; neither conversion copies its entries.
+dense :: OpT -> M.Matrix
+dense (OpT n buffer) = M.Matrix (2^n) (B.values buffer)
 
-transposeConjugate :: Limits -> Field -> Int -> V.Vector Coeff -> Result (V.Vector Coeff)
-transposeConjugate l f d xs = V.generateM (d*d) $ \k ->
-  let (i,j) = k `quotRem` d in S.conjugateC l f (xs V.! (j*d+i))
-
-apply :: Limits -> OpT -> StateT -> Result StateT
-apply l (OpT n matrix) state@(St.StateT _ input) = do
-  unless (n == qubits state) (Left (WidthMismatch n (qubits state)))
-  (mat,v) <- B.preparePair l S.PolynomialWork (B.count input) matrix input
-  applyIn l (OpT n mat) (St.StateT n v)
-
--- Established common context; public apply and program preflight own checks.
-applyIn :: Limits -> OpT -> StateT -> Result StateT
-applyIn l (OpT n (Buffer f mat)) (St.StateT _ (Buffer _ v)) = do
-  let d = 2^n
-  out <- V.generateM d $ \i -> foldM
-    (\acc j -> S.mulC l f (mat V.! (i*d+j)) (v V.! j) >>= S.addC l acc)
-    (S.zero f) [0..d-1]
-  pure (St.StateT n (Buffer f out))
-
-evalProg :: Limits -> Program -> StateT -> Result StateT
-evalProg l program state@(St.StateT n input) = do
-  St.validate l state
-  (f,ops) <- prepareProgram l n (B.field input) program
-  mapM_ (\(j,op) -> first (AtStep j) (matrixBudget l f op)) (zip [0..] ops)
-  start <- St.StateT n <$> B.promote l f input
-  foldM (\v (j,op) -> first (AtStep j) (evaluate l f op >>= \m -> applyIn l m v)) start (zip [0..] ops)
+pack :: Int -> Field -> M.Matrix -> OpT
+pack n field matrix = OpT n (Buffer field (M.entries matrix))
 
 sameWidth :: OpT -> OpT -> Result ()
 sameWidth a b = unless (opQubits a == opQubits b)
   (Left (WidthMismatch (opQubits a) (opQubits b)))
 
-addOp :: Limits -> OpT -> OpT -> Result OpT
-addOp l a@(OpT n xs) b@(OpT _ ys) = sameWidth a b >> (OpT n <$> B.add l xs ys)
-
-scaleOp :: Limits -> Cyclo -> OpT -> Result OpT
-scaleOp l c (OpT n b) = OpT n <$> B.scale l c b
-
-innerOp :: Limits -> OpT -> OpT -> Result Cyclo
-innerOp l a@(OpT _ xs) b@(OpT _ ys) = sameWidth a b >> B.inner l xs ys
-
-normSquaredOp :: Limits -> OpT -> Result Cyclo
-normSquaredOp l a = innerOp l a a
-
-equalOp :: Limits -> OpT -> OpT -> Result Bool
-equalOp l (OpT _ a) (OpT _ b) = B.equal l a b
-
-adjointOp :: Limits -> OpT -> Result OpT
-adjointOp l (OpT n b@(Buffer f xs)) = do
-  B.validate l b
-  S.workspace l f (2 * B.count b * toInteger (S.degree f))
-  OpT n . Buffer f <$> transposeConjugate l f (2^n) xs
-
-composeOp :: Limits -> OpT -> OpT -> Result OpT
-composeOp l a@(OpT n av) b@(OpT _ bv) = do
-  sameWidth a b
-  (Buffer f xs, Buffer _ ys) <- B.preparePair l S.PolynomialWork (B.count av) av bv
-  OpT n . Buffer f <$> multiply l f (2^n) xs ys
+-- At each recursion level retain up to two child matrices and one result;
+-- eight further buffers cover input promotion, application and block assembly.
+matrixBudget :: Limits -> Field -> C.CheckedOp -> Result ()
+matrixBudget limits field op = S.workspace limits field $
+  (3 * toInteger (C.depth op) + 8) * dim * dim * toInteger (S.degree field)
+  where dim = toInteger (C.dimension op)

@@ -1,9 +1,17 @@
 -- | Configuration and explicit failures for the exact prototype.
-module QPP.Exact.Types (Limits(..), defaultLimits, ExactError(..), Result) where
+module QPP.Exact.Types (Limits(..), defaultLimits, ExactError(..), Result, orFail) where
 
+import GHC.Stack (HasCallStack, withFrozenCallStack)
 import QPP.TypeCheck (TypeError)
 
 type Result a = Either ExactError a
+
+-- | The conventional backend API reports failures at the caller. Call the
+-- corresponding checked function when the program needs to recover instead.
+orFail :: HasCallStack => String -> Result a -> a
+orFail operation = either
+  (\err -> withFrozenCallStack (error ("QPP.Exact." ++ operation ++ ": " ++ show err)))
+  id
 
 -- | Representation limits, not wall-time or GHC heap guarantees. Workspace
 -- estimates include temporary scalar and evaluator buffers and are deliberately
@@ -30,6 +38,5 @@ data ExactError
   | WidthMismatch Int Int
   | DivisionByZero
   | ResourceLimit String Integer Integer -- ^ resource, requested, allowed
-  | UnsupportedStep Int String          -- ^ zero-based program index
   | AtStep Int ExactError
   deriving (Eq, Show)

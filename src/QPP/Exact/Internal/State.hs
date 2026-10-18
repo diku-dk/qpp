@@ -8,12 +8,15 @@ import Control.Monad (unless)
 import qualified Data.List as List
 import qualified Data.Vector as V
 import QPP.Exact.Types
+import QPP.Syntax (HasQubits(..))
 import QPP.Exact.Internal.Scalar (Cyclo(..))
 import qualified QPP.Exact.Internal.Scalar as S
 import QPP.Exact.Internal.Buffer (Buffer(..))
 import qualified QPP.Exact.Internal.Buffer as B
 
 data StateT = StateT !Int !Buffer deriving (Show)
+
+instance HasQubits StateT where n_qubits = qubits
 
 qubits :: StateT -> Int
 qubits (StateT n _) = n
@@ -41,12 +44,14 @@ fromAmplitudes l xs = do
   _ <- S.dimension l n
   StateT n <$> B.fromScalars l xs
 
-ket :: Limits -> [Bool] -> Result StateT
+ket :: Limits -> [Int] -> Result StateT
 ket l bs = do
+  unless (all (\b -> b == 0 || b == 1) bs)
+    (Left (InvalidInput "ket expects bits equal to 0 or 1"))
   d <- S.dimension l (length bs)
   f <- S.makeField l 1
   S.storage l f (toInteger d)
-  let j = List.foldl' (\acc b -> 2*acc + if b then 1 else 0) 0 bs
+  let j = List.foldl' (\acc b -> 2*acc + b) 0 bs
   pure (StateT (length bs) (Buffer f (V.generate d (\k -> if j == k then S.one f else S.zero f))))
 
 sameWidth :: StateT -> StateT -> Result ()

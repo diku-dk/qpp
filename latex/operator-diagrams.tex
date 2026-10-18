@@ -1,0 +1,120 @@
+\documentclass[11pt,a4paper,landscape]{article}
+\usepackage[margin=16mm]{geometry}
+\usepackage{qpp-tikz}
+\usepackage[hidelinks]{hyperref}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{7pt}
+\begin{document}
+\section*{One operator, two syntaxes}
+These trees represent the same two-qubit operator, of dimension $4$.
+The UOp is produced directly by \texttt{fromQOp}, with no additional normalization.
+Operands are ordered from left to right; at a composition node, the rightmost acts first.
+\begin{center}
+\begin{minipage}[t]{.24\textwidth}\centering
+\textbf{QOp (source)}\par\medskip\input{qop-example.tex}
+\end{minipage}\hfill
+\begin{minipage}[t]{.73\textwidth}\centering
+\textbf{UOp (translation)}\par\medskip\input{uop-example.tex}
+\end{minipage}
+\end{center}
+Both roots are annotated $:\,2$. The UOp root's subscript in $\circ_4$ records
+the dimension, while its gray annotation records the qubit count.
+Lowering expands $H$ into rotations and a scalar phase, and replaces control by
+a direct sum with an identity block.
+
+In both syntaxes, $R(t)$ has its axis $A$ as a child and means $e^{-i\pi tA/2}$.
+Identity subscripts denote dimensions. Permutations retain the input dimensions
+and index list: $P_\otimes(ds;p)$ or $P_\oplus(ds;p)$, where output position $j$
+selects input $p_j$.
+
+\newpage
+\section*{Empty spaces, permutations, and adjoints}
+Empty tensor and direct sum have different dimensions; their labels keep this distinction visible.
+\begin{center}
+\input{uop-empty-tensor.tex}\qquad\input{uop-empty-sum.tex}\qquad\input{uop-identity.tex}
+\par\bigskip\input{qop-permute.tex}\qquad\input{uop-permute.tex}
+\par\bigskip
+\begin{minipage}[t]{.28\textwidth}\centering
+\textbf{Adjoint}\par\medskip
+\input{qop-adjoint.tex}
+\end{minipage}
+\begin{minipage}[t]{.38\textwidth}\centering
+\textbf{Binary composition}\par\medskip
+\input{qop-gates.tex}
+\end{minipage}
+\begin{minipage}[t]{.28\textwidth}\centering
+\textbf{Scalar composition}\par\medskip
+\input{qop-scalars.tex}
+\end{minipage}
+\end{center}
+The printer preserves exact rational angles, arbitrary dimensions, nested
+associations, and singleton lists. It neither normalizes nor type-checks its input.
+
+\newpage
+\section*{Qubit counts}
+The annotation $:\,n$ outside each outline gives the number of qubits.
+Scalars act on zero qubits; tensor adds counts, control adds one, and a direct
+sum of equal-sized blocks adds one. Composition and rotation retain the width.
+\begin{center}
+\begin{minipage}[t]{.48\textwidth}\centering
+\textbf{QOp}\par\medskip\input{qop-annotated.tex}
+\end{minipage}\hfill
+\begin{minipage}[t]{.48\textwidth}\centering
+\textbf{Direct sum}\par\medskip\input{qop-sum-annotated.tex}
+\end{minipage}
+\end{center}
+\begin{center}
+\begin{minipage}[t]{.48\textwidth}\centering
+\textbf{Independent UOp example (dimension 3)}\par\medskip\input{uop-annotated.tex}
+\end{minipage}\hfill
+\begin{minipage}[t]{.48\textwidth}\centering
+\textbf{Scalar and zero-dimensional spaces}\par\medskip\input{uop-empty-annotated.tex}
+\end{minipage}
+\end{center}
+For UOp, dimension $2^n$ gives count $n$. Other dimensions are marked $d=\cdots$;
+in particular, $d=0$ is not a zero-qubit space. Counts assume well-formed input.
+The independent UOp example combines blocks of dimensions $1$ and $2$, giving $3$.
+Counts appear by default. Use \texttt{showTikZQOpWithoutQubits} or
+\texttt{showTikZUOpWithoutQubits} to omit the outside annotations.
+
+\newpage
+\section*{A small QFT: QOp}
+This is \texttt{qft 2}, retaining its recursive construction, identity padding,
+and binary associations. Following the edges makes each operand's scope explicit.
+\begin{center}\input{qft2-qop-annotated.tex}\end{center}
+
+\newpage
+\section*{A small QFT: normalized UOp}
+The same \texttt{qft 2} is lowered and normalized explicitly before printing.
+Its outer composition has eight children, read from right to left.
+\begin{center}\input{qft2-uop-without-qubits.tex}\end{center}
+Each Hadamard becomes three rotation factors with its phase retained.
+Printing only traverses syntax; no operator matrix is constructed.
+This wide example uses \texttt{showTikZUOpWithoutQubits} to keep the tree compact.
+
+\newpage
+\section*{Restyle the same tree}
+The diagram below reuses \texttt{qop-example.tex} unchanged.
+TikZ controls appearance; Forest controls spacing and tree layout.
+\begin{verbatim}
+\tikzset{
+  qpp/node/.append style={rounded corners=0pt, line width=.8pt},
+  qpp/gate/.append style={fill=yellow!20},
+  qpp/edge/.append style={thick, draw=blue!60!black}
+}
+\forestset{qpp tree/.append style={for tree={l sep=5mm, s sep=7mm, fork sep=2.5mm}}}
+\end{verbatim}
+\begingroup
+\tikzset{
+  qpp/node/.append style={rounded corners=0pt, line width=.8pt},
+  qpp/gate/.append style={fill=yellow!20},
+  qpp/edge/.append style={thick, draw=blue!60!black}
+}
+\forestset{qpp tree/.append style={for tree={l sep=5mm, s sep=7mm, fork sep=2.5mm}}}
+\begin{center}\input{qop-example.tex}\end{center}
+\endgroup
+\small The Haskell printer translates each operator into \texttt{Data.Tree},
+then emits \href{https://ctan.org/pkg/forest}{Forest}'s bracket notation.
+All layout and styling live in \texttt{qpp-tikz.sty}; no coordinates or drawing macros
+are generated.
+\end{document}

@@ -139,7 +139,7 @@ pushComposes op = let push = pushComposes in case op of
     4. (a ∘ b) ⊕ c  =  (a ⊕ I) ∘ (b ⊕ I) ∘ (I ⊕ c)
 
    This function lifts compositions over tensor products and direct sums.
-   Note that this operates on QOp, not MOp, since MOp does not have binary Tensors/DirectSums/Composes.
+   Note that this operates on QOp, not UOp, since UOp does not have binary Tensors/DirectSums/Composes.
    -}
 liftComposes :: QOp -> QOp
 liftComposes op = let lift = liftComposes in case op of

@@ -18,17 +18,17 @@ primitive l f gate = do
       o = one f
       no = negC o
   case gate of
-    GX -> pure (V.fromList [z,o,o,z])
-    GY -> do
+    X -> pure (V.fromList [z,o,o,z])
+    Y -> do
       i <- rootPower l f 4 1
       pure (V.fromList [z,negC i,i,z])
-    GZ -> pure (V.fromList [o,z,z,no])
-    GH -> do
+    Z -> pure (V.fromList [o,z,z,no])
+    H -> do
       w <- rootPower l f 8 1
       wi <- rootPower l f 8 (-1)
       h <- addC l w wi >>= scaleC l (1%2)
       pure (V.fromList [h,h,h,negC h])
-    GSX -> do
+    SX -> do
       i <- rootPower l f 4 1
       a <- addC l o i >>= scaleC l (1%2)
       b <- subC l o i >>= scaleC l (1%2)

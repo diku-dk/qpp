@@ -1,0 +1,53 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{qpp-tikz}[2026/10/17 QPP operator syntax trees]
+\RequirePackage{amsmath}
+\RequirePackage{forest}
+\useforestlibrary{edges}
+
+\definecolor{qppInk}{HTML}{28384A}
+\definecolor{qppBlue}{HTML}{356AA0}
+\definecolor{qppTeal}{HTML}{217A73}
+\definecolor{qppViolet}{HTML}{7155A3}
+\definecolor{qppAmber}{HTML}{A36A2C}
+
+% Forest handles tree layout; TikZ styles handle node and edge appearance.
+% Both can be customized with /.append style in the surrounding document.
+\newsavebox{\qppAnnotationBox}
+\forestset{
+  declare dimen register=qpp annotation width,
+  qpp tree/.style={
+    qpp annotation width=0pt,
+    for tree={
+      grow=south, anchor=north,
+      l sep=4mm, s sep=4mm, fork sep=2mm,
+      node options+={qpp/node}, edge={qpp/edge}
+    },
+    forked edges, % A shared horizontal branch with short drops to the children.
+    before packing={for tree={s sep+=\foresteregister{qpp annotation width}}}
+  },
+  % Forest labels are drawn after packing. Reserve the widest label's width
+  % between subtrees so outside annotations cannot collide with other nodes.
+  qpp annotation/.style={
+    label={[qpp/annotation]right:{$:\,#1$}},
+    TeX={\sbox{\qppAnnotationBox}{\tikz\node[qpp/annotation] {$:\,#1$};}},
+    qpp annotation width/.pgfmath={max(\foresteregister{qpp annotation width},\wd\qppAnnotationBox)}
+  }
+}
+\tikzset{
+  qpp/node/.style={font=\small, draw=qppInk!55, text=qppInk, fill=white,
+    line width=.55pt, rounded corners=1.5pt, minimum width=6mm, minimum height=5.5mm,
+    inner xsep=4pt, inner ysep=2.5pt},
+  qpp/edge/.style={draw=qppInk!50, line width=.5pt},
+  qpp/annotation/.style={font=\scriptsize, text=black!55, inner sep=1pt, outer sep=0pt},
+  qpp/accent/.style={draw=#1!70, text=#1!85!black, fill=#1!6},
+  qpp/gate/.style={qpp/accent=qppBlue},
+  qpp/identity/.style={draw=qppInk!30, text=qppInk!80, fill=qppInk!3},
+  qpp/phase/.style={qpp/accent=qppViolet},
+  qpp/permutation/.style={qpp/accent=qppAmber},
+  qpp/tensor/.style={qpp/accent=qppBlue},
+  qpp/sum/.style={qpp/accent=qppTeal},
+  qpp/compose/.style={qpp/accent=qppInk},
+  qpp/rotation/.style={qpp/accent=qppViolet},
+  qpp/control/.style={qpp/accent=qppAmber},
+  qpp/adjoint/.style={qpp/accent=qppViolet}
+}

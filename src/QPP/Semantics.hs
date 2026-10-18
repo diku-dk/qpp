@@ -23,6 +23,12 @@
 --   backend. This is why the "QPP" umbrella re-exports syntax, rewriting and
 --   pretty-printing but never a backend — the choice has to be explicit.
 --
+--   The exact Matrix and Statevector backends use these entry-point signatures
+--   too, with default resource limits and checked @WithLimits@ variants.
+--   They retain unnormalized measurement branches and use squared-norm ratios
+--   for later probabilities. Their scalar/linear-algebra API is separate from
+--   the numerical HilbertSpace and Convertible interfaces described below.
+--
 --   `evalStep` and `evalProg` are the same fold over `Step`s for every
 --   backend, so they are defined once here as `evalStepWith`/`evalProgWith`
 --   and instantiated by each backend with its own unitary application and

@@ -35,6 +35,7 @@ data QOp
   | Adjoint QOp
   deriving (Show,Eq)
 
+
 {- Quantum programs including measurement. -}
 data Step
   = Unitary QOp             -- A unitary quantum program

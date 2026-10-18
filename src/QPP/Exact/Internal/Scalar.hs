@@ -5,6 +5,7 @@ module QPP.Exact.Internal.Scalar
   ( Field, Coeff, Cyclo(..), Result, Work(..)
   , index, degree, modulus, coordinates, importCoeff
   , validateLimits, bound, slots, bits, checkInteger, checkRational
+  , intAdd, intMul
   , storage, reserve, workspace, makeField, fieldDegree, fieldFor, commonField
   , checkField, checkCoeff, jointIndex, dimension, widthOfLength
   , constant, zero, one, isZeroC, asRationalC
@@ -290,16 +291,21 @@ reduce l f p = do
   pure (Coeff (V.generate (degree f) (at r)))
 
 addC :: Limits -> Coeff -> Coeff -> Result Coeff
-addC l (Coeff a) (Coeff b) = do
+addC l = zipCoefficients (ratAdd l)
+
+-- Fuse subtraction into the coordinate loop: a separately negated vector
+-- would need degree(f) temporary slots, exceeding the linear-work allowance.
+subC :: Limits -> Coeff -> Coeff -> Result Coeff
+subC l = zipCoefficients (\a b -> ratAdd l a (-b))
+
+zipCoefficients :: (Rational -> Rational -> Result Rational) -> Coeff -> Coeff -> Result Coeff
+zipCoefficients action (Coeff a) (Coeff b) = do
   unless (V.length a == V.length b)
     (Left (InvalidInput "internal coefficient degree mismatch"))
-  Coeff <$> V.zipWithM (ratAdd l) a b
+  Coeff <$> V.zipWithM action a b
 
 negC :: Coeff -> Coeff
 negC (Coeff a) = Coeff (V.map negate a)
-
-subC :: Limits -> Coeff -> Coeff -> Result Coeff
-subC l a b = addC l a (negC b)
 
 scaleC :: Limits -> Rational -> Coeff -> Result Coeff
 scaleC l c (Coeff a) = Coeff <$> V.mapM (ratMul l c) a
