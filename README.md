@@ -79,6 +79,48 @@ and `uop.normalized.raw.txt` / `uop.normalized.pretty.txt` into `output/qft4/`.
 The normalized pretty print puts each outer composition factor on its own line.
 Use `16` for the corresponding sixteen-qubit example.
 
+### Flat circuits
+
+`QPP.QCirc` provides `QCirc`, the gate-level view of a unitary: a wire count and a
+time-ordered list of gates (the head acts first), each a `QOp` placed on an explicit
+list of absolute wires. Import it qualified, like `QPP.UOp`:
+
+```haskell
+import qualified QPP.QCirc as QC
+
+QC.printQCirc (QC.fromQOp (qft 3))
+-- qubits: 3
+-- H @ [2]
+-- C ((Phase (1 % 4) ⊗ R Z (1 % 2))) @ [1,2]
+-- C ((I ⊗ (Phase (1 % 8) ⊗ R Z (1 % 4)))) @ [0,1,2]
+-- H @ [1]
+-- C ((Phase (1 % 4) ⊗ R Z (1 % 2))) @ [0,1]
+-- H @ [0]
+-- Permute [2,1,0] @ [0,1,2]
+```
+
+`QC.fromQOp :: QOp -> QCirc` lifts compositions out of tensor products and direct
+sums (`liftComposes`), pushes adjoints to the leaves, removes trivial identities, and
+then reads one gate per non-identity tensor factor of each layer, on its consecutive
+window of wires. It does not fuse, split or compact gates: `C (Id 2 ⊗ X)` stays one
+four-wire gate, `H ∘ H` gives two gates, and a global `Phase t` is a gate on no wires.
+It assumes well-formed input, like `op_qubits`; `QC.checkQCirc` validates a circuit.
+
+`QC.toQOp :: QCirc -> QOp` is the embedding back. A gate on consecutive increasing
+wires is placed with identity padding. Any other wire list, such as a CNOT with its
+control below its target, is conjugated by the permutation that brings its wires to
+the front in the listed order:
+
+```haskell
+QC.toQOp (QC.QCirc 2 [QC.Gate (C X) [1,0]])
+-- (Permute [1,0] ∘ (C (X) ∘ Permute [1,0]))
+```
+
+`QCirc` implements the `Operator` class: `<>` composes in mathematical order, `⊗`
+places circuits side by side, `adj` reverses the gate list and takes each gate's
+adjoint, and `a ⊕ b` conditions on a new wire 0 by wrapping every gate in `C`.
+`cabal run QFTSyntax -- 4` also writes the gate listing to `output/qft4/qcirc.txt`.
+
 ### TikZ operator diagrams
 
 `showTikZQOp` and `showTikZUOp` produce LaTeX fragments for both syntaxes:

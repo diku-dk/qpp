@@ -39,6 +39,10 @@ library
       QPP.UOp.Syntax
       QPP.UOp.FromQOp
       QPP.UOp.Normalize
+      -- Flat circuits: gates on explicit wires, bridged to QOp:
+      QPP.QCirc
+      QPP.QCirc.Syntax
+      QPP.QCirc.FromQOp
       -- Symbolic well-formedness and rotation-axis checks:
       QPP.TypeCheck
       -- QOp program transformations for optimization and analysis:
@@ -64,6 +68,7 @@ library
       QPP.PrettyPrint
       QPP.PrettyPrint.Op
       QPP.PrettyPrint.UOp
+      QPP.PrettyPrint.QCirc
       QPP.PrettyPrint.TikZ
       QPP.PrettyPrint.Matrix
       -- Example quantum programs written in HQP:
@@ -367,5 +372,11 @@ test-suite MPSTest
   build-depends:
     vector
   main-is: MPSTest.hs
+  other-modules: Generators
+
+test-suite QCircTest
+  import: test-common
+  type: exitcode-stdio-1.0
+  main-is: QCircTest.hs
   other-modules: Generators
 

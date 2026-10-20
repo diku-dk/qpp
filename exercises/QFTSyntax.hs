@@ -1,10 +1,11 @@
--- | Inspect the QFT as QOp and UOp syntax, without evaluating its matrix.
+-- | Inspect the QFT as QOp, UOp and flat-circuit syntax, without evaluating its matrix.
 -- Run with `cabal run QFTSyntax -- 16` (16 is also the default).
 module Main where
 
 import Data.List (intercalate)
 import Programs.QFT (qft)
 import qualified QPP as Q
+import qualified QPP.QCirc as QC
 import qualified QPP.UOp as U
 import System.Directory (createDirectoryIfMissing)
 import System.Environment (getArgs)
@@ -21,6 +22,7 @@ main = do
   let q = qft n
   u <- either (fail . show) pure (U.fromQOp q)
   let normalized = U.normalize u
+      circuit = QC.fromQOp q
       directory = "output" </> ("qft" ++ show n)
       outputs =
         [ ("qop.pretty.txt", Q.showOp q)
@@ -28,6 +30,7 @@ main = do
         , ("uop.pretty.txt", U.showUOp u)
         , ("uop.normalized.raw.txt", show normalized)
         , ("uop.normalized.pretty.txt", showLayers normalized)
+        , ("qcirc.txt", QC.showQCirc circuit)
         ]
       summary = unlines
         [ "qft " ++ show n ++ ": " ++ show n ++ " qubits; dimension " ++ show (U.dim u)
@@ -35,6 +38,7 @@ main = do
         , "UOp: " ++ show (nodes uChildren u) ++ " syntax nodes; depth " ++ show (depth uChildren u)
         , "Normalized UOp: " ++ show (nodes uChildren normalized) ++ " syntax nodes; depth " ++ show (depth uChildren normalized)
         , "Normalized top-level composition: " ++ show (compositionLength normalized) ++ " factors"
+        , "QCirc: " ++ show (length (QC.circ_gates circuit)) ++ " gates on " ++ show (QC.circ_qubits circuit) ++ " wires"
         , "Counts expand every tree occurrence, including shared subexpressions."
         , "No operator matrix was constructed."
         ]

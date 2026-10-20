@@ -25,6 +25,7 @@ qualified import aliases used in the test files.
 | `TikZTest` | Syntax-tree structure and operand order, exact angles, protected Forest labels, empty and singleton lists, symbolic dimensions, optional qubit counts, and separation of syntax from styling. `make -C latex` additionally compiles the tree gallery. |
 | `ExactTest` | Cyclotomic polynomial identities, embedding composition, normalized inversion in larger fields, and conjugation; independent exact gate and DFT values; dense/direct agreement on unnormalized inputs and compiled-plan promotion; composite axes, zero-qubit phases, linear algebra, rewrite phase preservation, program preflight, exact real ordering and threshold ties, unnormalized measurement, repeated measurements and subset resets with conventional outcome/RNG ordering, long-composition workspace, zero-rotation field pruning, and resource boundaries. Generators shrink while preserving valid shapes. No floating-point tolerances are used. |
 | `QFTTest` | QFT-specific identities and three-backend agreement on `qft n`. |
+| `QCircTest` | Flat circuits (`QPP.QCirc`): fixed gate extractions (time order, wire windows, phases on no wires, `qft 3`), `toQOp` placement by identity padding and by permutation conjugation, round-trip and idempotence properties over `RandomQOp`, agreement of the circuit `Operator` instances with QOp's, and hand-built circuits on shuffled wires checked for well-formedness, unitarity, and an independent CNOT bit-rule specification. |
 
 ## Generators (in `Generators.hs`)
 
@@ -37,6 +38,7 @@ qualified import aliases used in the test files.
 | `genPermutation n` | A permutation of `[0..n-1]`, via QuickCheck's `shuffle`. |
 | `genRat` | A rational in `[-7,7]/[1,8]`. |
 | `RandomVec`, `RandomMatrix` | Random complex vectors / square matrices (small integer entries). In `MatrixPrepTest`. |
+| `RandomQCirc` | A circuit on 1–4 wires with up to four gates, each on up to two distinct shuffled wires and a depth-1 payload of matching arity. Shrinks by dropping a gate or shrinking a payload. In `QCircTest`. |
 
 QC budget: `QuickCheckTests 50`, `QuickCheckMaxSize 5` (4 in MatrixPrepTest).
 The shrinkers are arity-preserving so the shrunk counterexample is still a
