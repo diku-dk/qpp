@@ -26,6 +26,7 @@ import QPP.Util (permInvert)
 --------------------------------------------------------------------------------
 
 -- | Absolute wire index in a circuit's register.
+-- ANCHOR: qcirc-syntax
 type Wire = Nat
 
 -- | @Gate op ws@ applies @op@ with its local qubit @i@ on wire @ws !! i@.
@@ -39,6 +40,7 @@ data Gate = Gate QOp [Wire]
 --   first. Every gate's wires lie in @[0, circ_qubits)@.
 data QCirc = QCirc { circ_qubits :: Nat, circ_gates :: [Gate] }
   deriving (Show, Eq)
+-- ANCHOR_END: qcirc-syntax
 
 --------------------------------------------------------------------------------
 -- Shared operator notation

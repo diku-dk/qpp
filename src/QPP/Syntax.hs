@@ -19,6 +19,7 @@ type Nat = Int
     The QOp type is a symbolic unitary operator, which just builds an abstract syntax tree (AST).
     It provides building blocks for building any n-qubit unitary operator. Explanation of constructors is given below.
  -}
+-- ANCHOR: qop-syntax
 data QOp
   = Id Nat -- Identity n: C^{2^n} -> C^{2^n} is the n-qubit identity operator.
                  -- Identity 0: C^1 -> C^1 scalar multiplication by 1, unit for ⊗.
@@ -34,9 +35,11 @@ data QOp
   | Compose QOp QOp   -- Composition a∘b of operators with same arity.
   | Adjoint QOp
   deriving (Show,Eq)
+-- ANCHOR_END: qop-syntax
 
 
 {- Quantum programs including measurement. -}
+-- ANCHOR: program-syntax
 data Step
   = Unitary QOp             -- A unitary quantum program
   | Initialize [Nat] [Bool] -- Initialize qubits qs to classical values vs.
@@ -44,6 +47,7 @@ data Step
   deriving (Show, Eq)
 
 type Program = [Step]
+-- ANCHOR_END: program-syntax
 
 
 --------------------------------------------------------------------------------
