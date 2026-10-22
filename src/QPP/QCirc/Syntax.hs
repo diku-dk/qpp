@@ -10,10 +10,13 @@ module QPP.QCirc.Syntax
   ( Wire, Gate(..), QCirc(..), QCircError(..)
   , checkQCirc
   , toQOp
+  , peelControls
+  , gateWires, gateSpan, layersBy, layers, depth
   ) where
 
 import Control.Monad (unless)
 import Data.List ((\\), nub)
+import qualified Data.Map.Strict as M
 import QPP.Syntax
 import QPP.TypeCheck (TypeError, typeCheck)
 import QPP.Util (permInvert)
@@ -93,6 +96,54 @@ checkQCirc (QCirc n gs)
       unless (m == length ws) $ Left (GateArity gate m (length ws))
       unless (all (\w -> 0 <= w && w < n) ws) $ Left (WireOutOfRange gate)
       unless (nub ws == ws) $ Left (DuplicateWire gate)
+
+--------------------------------------------------------------------------------
+-- Controls
+--------------------------------------------------------------------------------
+
+-- | The leading controls of an operator, counted, and the operator they
+--   control: @peelControls (C (C a)) = (2, a)@ when @a@ is not itself a 'C'.
+peelControls :: QOp -> (Int, QOp)
+peelControls (C a) = let (k, b) = peelControls a in (k + 1, b)
+peelControls a     = (0, a)
+
+--------------------------------------------------------------------------------
+-- Layers
+--------------------------------------------------------------------------------
+
+-- | The wires a gate acts on, in its local qubit order.
+gateWires :: Gate -> [Wire]
+gateWires (Gate _ ws) = ws
+
+-- | Every wire from the lowest to the highest one a gate touches: the rows a
+--   gate covers when drawn as one column of a diagram.
+gateSpan :: Gate -> [Wire]
+gateSpan (Gate _ []) = []
+gateSpan (Gate _ ws) = [minimum ws .. maximum ws]
+
+-- | As-soon-as-possible layering by a footprint: a gate joins the layer after
+--   the latest layer of an earlier gate whose footprint meets its own, and a
+--   gate with an empty footprint joins the first layer. Layers keep time order,
+--   and their concatenation reorders the gates only across disjoint footprints.
+layersBy :: (Gate -> [Wire]) -> [Gate] -> [[Gate]]
+layersBy footprint gs =
+  -- Each gate is consed onto its layer, so the layers come out reversed.
+  map reverse (M.elems (M.fromListWith (++) [ (k, [g]) | (k, g) <- schedule M.empty gs ]))
+  where
+    schedule _ [] = []
+    schedule used (g : more) = (k, g) : schedule used' more
+      where
+        ws = footprint g
+        k = maximum (0 : [ i + 1 | w <- ws, Just i <- [M.lookup w used] ]) :: Int
+        used' = foldr (`M.insert` k) used ws
+
+-- | The gates in layers of pairwise disjoint wires, as soon as possible.
+layers :: QCirc -> [[Gate]]
+layers = layersBy gateWires . circ_gates
+
+-- | The number of layers that hold a gate on at least one wire.
+depth :: QCirc -> Int
+depth = length . filter (not . all (null . gateWires)) . layers
 
 --------------------------------------------------------------------------------
 -- Embedding into QOp

@@ -1,4 +1,7 @@
 -- | Inspect the QFT as QOp, UOp and flat-circuit syntax, without evaluating its matrix.
+-- The circuit is written as a gate listing, text diagrams (wires as rows, and as
+-- columns with time running down) and a quantikz fragment, both as extracted and
+-- after `simplify`.
 -- Run with `cabal run QFTSyntax -- 16` (16 is also the default).
 module Main where
 
@@ -23,6 +26,7 @@ main = do
   u <- either (fail . show) pure (U.fromQOp q)
   let normalized = U.normalize u
       circuit = QC.fromQOp q
+      simplified = QC.simplify circuit
       directory = "output" </> ("qft" ++ show n)
       outputs =
         [ ("qop.pretty.txt", Q.showOp q)
@@ -31,6 +35,13 @@ main = do
         , ("uop.normalized.raw.txt", show normalized)
         , ("uop.normalized.pretty.txt", showLayers normalized)
         , ("qcirc.txt", QC.showQCirc circuit)
+        , ("qcirc.diagram.txt", QC.showQCircDiagram circuit)
+        , ("qcirc.vertical.txt", QC.showQCircDiagramVertical circuit)
+        , ("qcirc.tex", QC.showQuantikz circuit)
+        , ("qcirc.simplified.txt", QC.showQCirc simplified)
+        , ("qcirc.simplified.diagram.txt", QC.showQCircDiagram simplified)
+        , ("qcirc.simplified.vertical.txt", QC.showQCircDiagramVertical simplified)
+        , ("qcirc.simplified.tex", QC.showQuantikz simplified)
         ]
       summary = unlines
         [ "qft " ++ show n ++ ": " ++ show n ++ " qubits; dimension " ++ show (U.dim u)
@@ -38,7 +49,9 @@ main = do
         , "UOp: " ++ show (nodes uChildren u) ++ " syntax nodes; depth " ++ show (depth uChildren u)
         , "Normalized UOp: " ++ show (nodes uChildren normalized) ++ " syntax nodes; depth " ++ show (depth uChildren normalized)
         , "Normalized top-level composition: " ++ show (compositionLength normalized) ++ " factors"
-        , "QCirc: " ++ show (length (QC.circ_gates circuit)) ++ " gates on " ++ show (QC.circ_qubits circuit) ++ " wires"
+        , "QCirc: " ++ show (length (QC.circ_gates circuit)) ++ " gates on " ++ show (QC.circ_qubits circuit)
+            ++ " wires; depth " ++ show (QC.depth circuit)
+        , "Simplified QCirc: " ++ show (length (QC.circ_gates simplified)) ++ " gates; depth " ++ show (QC.depth simplified)
         , "Counts expand every tree occurrence, including shared subexpressions."
         , "No operator matrix was constructed."
         ]

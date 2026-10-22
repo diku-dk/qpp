@@ -76,6 +76,7 @@ hermitianAxes =
   , Tensor (Phase (-1)) (Tensor X Y)
   , Adjoint (Tensor H Z), C H, DirectSum X Z
   , Permute [], Permute [1,0], Permute [2,1,0]
+  , Compose (Permute [1,2,0,3]) (Permute [0,2,3,1]) -- Two 3-cycles whose product is an involution.
   , R X 2, R Y (-4), R Z 0
   , Compose X X, Compose (Id 1) H, Compose H (Id 1)
   , Compose (R X (1 % 3)) (Adjoint (R X (1 % 3)))
@@ -98,7 +99,7 @@ hermitianAxes =
 nonHermitianAxes :: [QOp]
 nonHermitianAxes =
   [ SX, Phase (1 % 2), R Z 1, R Z (1 % 2)
-  , Permute [1,2,0], Compose X Z
+  , Permute [1,2,0], Compose (Permute [1,2,0]) (Permute [1,2,0]), Compose X Z
   , Tensor (Phase (1 % 2)) X, C SX, DirectSum X SX, Adjoint SX
   ]
 
@@ -153,6 +154,8 @@ phaseTests = testGroup "Adjoint phases"
           , (R H 1, 1), (R H (-3), 1), (R H 2, 0)
           , (R SX 0, 0), (R (R SX 0) (1 % 3), 1 % 3)
           , (Compose (R SX 0) (R SX 0), 0)
+          , (Compose (R Z (1 % 2)) (R Z (1 % 2)), 1)
+          , (Compose (Permute [1,2,0,3]) (Permute [0,2,3,1]), 0)
           , (R (Id 2) (1 % 3), 1 % 3)
           , (R (Tensor (Phase 1) (Id 2)) (1 % 3), 5 % 3)
           , (R (R H 2) (1 % 3), 5 % 3)

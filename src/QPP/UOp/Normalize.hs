@@ -8,7 +8,7 @@ module QPP.UOp.Normalize (normalize) where
 
 import Data.List (transpose)
 import QPP.UOp.Syntax
-import QPP.Util (permApply)
+import QPP.Util (permApply, reduceAngle)
 
 -- | Flatten associations, remove units, collect scalar phases, and simplify
 -- rotations and adjacent composition factors. Interchange lifts
@@ -29,11 +29,6 @@ pass op = case op of
   Compose d xs      -> composeOp d (map pass xs)
   PermuteTensor ds p -> permutation PermuteTensor (product ds) ds p
   PermuteSum ds p    -> permutation PermuteSum (sum ds) ds p
-
--- Keep small negative angles readable: phase parameters use (-1,1],
--- non-scalar rotations (-2,2]. 'phase' then encodes its parameter as R I (-2*t).
-angle :: Rational -> Rational -> Rational
-angle period t = t - period * fromInteger (ceiling ((t - period/2) / period))
 
 isIdentity :: UOp -> Bool
 isIdentity (Compose _ []) = True
@@ -113,7 +108,7 @@ scale t a
   | otherwise           = Tensor [phase r, b]
   where
     (s, b) = splitPhase a
-    r = angle 2 (t + s)
+    r = reduceAngle 2 (t + s)  -- 'phase' encodes its parameter as R I (-2*r).
     isSum DirectSum{} = True
     isSum _           = False
 
@@ -128,7 +123,7 @@ rotation a t
   | otherwise       = R a r
   where
     d = dim a
-    r = angle 4 t
+    r = reduceAngle 4 t
 
 composeOp :: Dim -> [UOp] -> UOp
 composeOp d xs = scale (sum (map fst parts)) body

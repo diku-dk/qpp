@@ -21,7 +21,8 @@ import QPP.Semantics.Matrix (CMat)
 import Numeric.LinearAlgebra (takeDiag, toList)
 import qualified Numeric.LinearAlgebra as H
 import Data.Complex (Complex(..), magnitude)
-import Data.Ratio (numerator, denominator)
+import Data.Ratio ((%), numerator, denominator)
+import Data.Maybe (isJust)
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -792,6 +793,72 @@ illFormedTests = testGroup "Ill-formed input is left alone"
 qcOpts :: TestTree -> TestTree
 qcOpts = localOption (QuickCheckTests 50) . localOption (QuickCheckMaxSize 4)
 
+-- | `cleanOnes` reduces angles, so every consumer of the simplifier sees the
+--   same spelling of a rotation: angles in (-2, 2], phases in (-1, 1], a full
+--   turn gone and a half turn a phase.
+angleReductionTests :: TestTree
+angleReductionTests = testGroup "Angle reduction"
+  [ testCase "cleanOnes reduces rotation angles into (-2, 2]" $
+      cleanOnes (R Z (9 % 2)) @?= R Z (1 % 2)
+  , testCase "cleanOnes reduces phases into (-1, 1]" $
+      cleanOnes (Phase (7 % 2)) @?= Phase ((-1) % 2)
+  , testCase "a full turn is the identity" $
+      cleanop (R Z 4) @?= Id 1
+  , testCase "a half turn is a phase on the identity" $
+      cleanop (R (X ⊗ Z) 2) @?= Tensor (Phase 1) (Id 2)
+  ]
+
+-- | A companion for the gate-identity properties: the term itself, its
+--   structural adjoint, its `Adjoint`, or an unrelated term of the same
+--   arity, so that every rule of `fuseOps` fires often.
+companion :: Int -> QOp -> Gen QOp
+companion n a = oneof [pure a, pure (dagger a), pure (Adjoint a), sameArity n]
+
+-- | Whatever `fuseOps` collapses a pair to has the pair's matrix.
+prop_fuseOps_sound :: RandomQOp -> Property
+prop_fuseOps_sound (RandomQOp n a) =
+  forAll (companion n a) $ \b ->
+    let fused = fuseOps a b
+    in classify (isJust fused) "fused" $
+         maybe (property True) (eqMat (Compose a b)) fused
+
+-- | A term and its adjoint give the identity in either order, before any
+--   other rule: a rotation and its inverse fuse to `Id`, not to `R a 0`.
+prop_fuseOps_adjoint :: RandomQOp -> Property
+prop_fuseOps_adjoint (RandomQOp n a) =
+  fuseOps a (dagger a) === Just (Id n) .&&. fuseOps (dagger a) a === Just (Id n)
+
+-- | `fuseOps` is the one list of pairwise gate identities, consulted by
+--   `doComp`, the circuit fuser and the type checker.
+gateIdentityTests :: TestTree
+gateIdentityTests = testGroup "Gate identities"
+  [ testCase "SX ∘ SX = X" $
+      fuseOps SX SX @?= Just X
+  , testCase "SX† ∘ SX† = X" $
+      fuseOps (Adjoint SX) (Adjoint SX) @?= Just X
+  , testCase "SX† ∘ SX = I in either order" $ do
+      fuseOps (Adjoint SX) SX @?= Just (Id 1)
+      fuseOps SX (Adjoint SX) @?= Just (Id 1)
+  , testCase "a controlled involution cancels itself" $
+      fuseOps (C X) (C X) @?= Just (Id 2)
+  , testCase "H ∘ X does not fuse" $
+      fuseOps H X @?= Nothing
+  , testCase "same-axis rotations add" $
+      fuseOps (R Z (1 % 3)) (R Z (1 % 3)) @?= Just (R Z (2 % 3))
+  , testCase "permutations compose" $
+      fuseOps (Permute [1,2,0]) (Permute [1,2,0]) @?= Just (Permute [2,0,1])
+  , testCase "doComposes (SX ∘ SX) = X" $
+      doComposes (Compose SX SX) @?= X
+  , testCase "doComposes (SX† ∘ SX†) = X" $
+      doComposes (Compose (Adjoint SX) (Adjoint SX)) @?= X
+  , testCase "doComposes (SX† ∘ SX) = I" $
+      doComposes (Compose (Adjoint SX) SX) @?= Id 1
+  , testCase "doComposes cancels a composite against itself" $
+      doComposes (Compose (Tensor H X) (Tensor H X)) @?= Id 2
+  , testProperty "fuseOps is sound under all three backends" prop_fuseOps_sound
+  , testProperty "a term and its dagger fuse to the identity" prop_fuseOps_adjoint
+  ]
+
 main :: IO ()
 main = defaultMain $ qcOpts $ testGroup "AlgebraTest"
   [ simplifierTests
@@ -804,4 +871,6 @@ main = defaultMain $ qcOpts $ testGroup "AlgebraTest"
   , phaseTests
   , bifuncBisect
   , illFormedTests
+  , angleReductionTests
+  , gateIdentityTests
   ]

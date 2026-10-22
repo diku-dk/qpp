@@ -1,6 +1,7 @@
 \documentclass[11pt,a4paper,landscape]{article}
 \usepackage[margin=16mm]{geometry}
 \usepackage{qpp-tikz}
+\usepackage{quantikz}
 \usepackage[hidelinks]{hyperref}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{7pt}
@@ -91,6 +92,25 @@ Its outer composition has eight children, read from right to left.
 Each Hadamard becomes three rotation factors with its phase retained.
 Printing only traverses syntax; no operator matrix is constructed.
 This wide example uses \texttt{showTikZUOpWithoutQubits} to keep the tree compact.
+
+\newpage
+\section*{Flat circuits}
+\texttt{QPP.QCirc} reads an operator as gates on wires, and \texttt{showQuantikz}
+draws the result with the \href{https://ctan.org/pkg/quantikz}{quantikz} package.
+Gates are placed in columns as soon as possible without two gates covering a common
+row. Controls link to their targets; a box on non-consecutive wires spans them, numbers
+its inputs by local qubit, and lets the wires it does not act on pass through.
+A gate on no wires is a scalar, emitted as a comment.
+\begin{center}
+\input{circuit-bell.tex}\qquad\input{circuit-elements.tex}
+\end{center}
+\texttt{qft 3} as extracted by \texttt{fromQOp}, then \texttt{qft 4} after \texttt{simplify}:
+\begin{center}
+\input{qft3-circuit.tex}
+\par\bigskip
+\input{qft4-circuit-simplified.tex}
+\end{center}
+\texttt{showQCircDiagram} draws the same layout in line-drawing characters for the terminal.
 
 \newpage
 \section*{Restyle the same tree}

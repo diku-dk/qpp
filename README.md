@@ -119,7 +119,111 @@ QC.toQOp (QC.QCirc 2 [QC.Gate (C X) [1,0]])
 `QCirc` implements the `Operator` class: `<>` composes in mathematical order, `⊗`
 places circuits side by side, `adj` reverses the gate list and takes each gate's
 adjoint, and `a ⊕ b` conditions on a new wire 0 by wrapping every gate in `C`.
-`cabal run QFTSyntax -- 4` also writes the gate listing to `output/qft4/qcirc.txt`.
+`cabal run QFTSyntax -- 4` also writes the gate listing, the text diagram and the
+quantikz fragment of the circuit to `output/qft4/qcirc*`, as extracted and after
+`QC.simplify`.
+
+`QPP.QCirc.Rewrite` holds the circuit passes. Each preserves the matrix of `toQOp`:
+
+- `QC.flatten` splits every gate into elementary gates: an atom (`X`, `Y`, `Z`, `H`,
+  `SX`, `R`, `Permute`, `Phase`) under zero or more controls, or a diagonal gate.
+  Atoms under controls stay as written. A composite diagonal operator, such as
+  `Phase a ⊕ Phase b` or the QFT's `C (Phase (θ/2) ⊗ R Z θ)`, becomes one canonical
+  gate: a balanced `⊕`-tree of phases over its wires in ascending order, with the
+  global phase split off as a gate on no wires. So `Phase a ⊕ Phase b` becomes
+  `Phase a` and `C (Phase (b-a))`, and the controlled phase becomes `C (C (Phase θ))`.
+  Anything else is unfolded: `C` distributes over `∘` and `⊗`, adjoints are resolved,
+  and a non-diagonal `a ⊕ b` becomes X-conjugated controls of `a` followed by
+  controls of `b`.
+- `QC.compact` restricts every gate to its support: `C (Id 2 ⊗ X)` on four wires
+  becomes `C X` on the control and the target, `R (X ⊗ I ⊗ Z) t` acts on two wires,
+  and fixed points of a `Permute` are dropped.
+- `QC.absorbPermutations` removes `Permute` gates by relabeling the wires of all
+  later gates, leaving one trailing `Permute` on all wires when the net relabeling
+  is not the identity. Drop that last gate for the circuit up to output renaming.
+- `QC.fuse` cancels or merges neighbours on the same wires with nothing on those
+  wires in between: adjoint pairs, `X X`, `H H`, `√X √X`, rotations about one axis
+  (angles modulo four, a half turn becoming a phase), phases, permutations, and
+  controls whose targets fuse. Wires are first put in a canonical order where the
+  operator allows it (`QC.orderWires`): controls ascend, the factors of a tensor
+  product or of a rotation axis follow their wires, and a permutation is
+  re-expressed on ascending wires, so a Toffoli with its controls listed either
+  way round cancels against the other. Two diagonal gates on the same set of
+  wires fuse in any wire order by adding their phases, whatever their spelling,
+  so `Z` cancels against `C (Phase 1)`, and a diagonal gate passes earlier
+  diagonal gates to find its partner.
+- `QC.collectPhases` merges all gates on no wires into one leading global `Phase`.
+- `QC.simplify` runs the five in that order.
+
+```haskell
+QC.printQCirc (QC.simplify (QC.fromQOp (qft 4)))
+-- qubits: 4
+-- H @ [3]
+-- C (C (Phase (1 % 2))) @ [2,3]
+-- C (C (Phase (1 % 4))) @ [1,3]
+-- C (C (Phase (1 % 8))) @ [0,3]
+-- H @ [2]
+-- C (C (Phase (1 % 2))) @ [1,2]
+-- C (C (Phase (1 % 4))) @ [0,2]
+-- H @ [1]
+-- C (C (Phase (1 % 2))) @ [0,1]
+-- H @ [0]
+-- Permute [3,2,1,0] @ [0,1,2,3]
+```
+
+`C (C (Phase θ))` is the controlled phase gate: `C (Phase θ)` is already the
+one-qubit gate diag(1, e^{iπθ}), the direct sum of two scalars, and the outer `C`
+controls it. `qft n` simplifies to `n` Hadamards, `n(n-1)/2` controlled phases and
+the final reversal. A composite diagonal wider than `QC.maxDiagonalWires` is
+unfolded structurally instead, since the phase list of a k-wire diagonal has 2^k
+entries.
+
+`QC.layers` groups the gates into layers on disjoint wires, as soon as possible, and
+`QC.depth` counts the layers that hold a gate on a wire; a global phase joins the first
+layer and does not count. Two printers draw a circuit on its wires from one shared
+layout: gates are placed in columns as soon as possible without two gates covering a
+common row, and each gate is drawn as its controls around one element, `⊕` for a
+controlled `X`, crosses for a swap, a phase dot `P(θ)` for `C^k (Phase θ)`, and
+otherwise a labelled box. A box on non-consecutive wires numbers its other inputs by
+local qubit, and a gate whose controls lie between its target's wires is drawn as one
+box. Angles are shown as multiples of π.
+
+```haskell
+QC.printQCircDiagram (QC.simplify (QC.fromQOp (qft 4)))
+-- q0: ───────────────────────●──────────────────●──────────●─────H──Perm[3,2,1,0]──
+--                            │                  │          │              │
+-- q1: ───────────────●───────┼──────────●───────┼─────H──P(π/2)──────────#1────────
+--                    │       │          │       │                         │
+-- q2: ───────●───────┼───────┼─────H──P(π/2)──P(π/4)─────────────────────#2────────
+--            │       │       │                                            │
+-- q3: ──H──P(π/2)──P(π/4)──P(π/8)────────────────────────────────────────#3────────
+```
+
+`QC.printQCircDiagramVertical` draws the same layout with the wires as columns and
+time running down the page, which suits long circuits:
+
+```haskell
+QC.printQCircDiagramVertical (QC.QCirc 3 [QC.Gate (C (C (Phase (1/4)))) [0,2], QC.Gate H [1]])
+-- q0  q1    q2
+-- │   │     │
+-- ●───┼───P(π/4)
+-- │   │     │
+-- │   H     │
+-- │   │     │
+```
+
+`QC.showQuantikz` emits the same layout as a `quantikz` environment for LaTeX, using
+`\ctrl`, `\targ`, `\swap`, `\phase` and `\gate`; a spanning box gets `\linethrough` on
+the wires it does not act on and `\gateinput` numbers, and global phases become `%`
+comments before the environment:
+
+```haskell
+putStrLn (QC.showQuantikz (QC.QCirc 2 [QC.Gate H [0], QC.Gate (C X) [0,1]]))
+-- \begin{quantikz}
+-- \lstick{$q_{0}$} & \gate{H} & \ctrl{1} & \qw \\
+-- \lstick{$q_{1}$} & \qw & \targ{} & \qw
+-- \end{quantikz}
+```
 
 ### TikZ operator diagrams
 
@@ -177,9 +281,10 @@ and measures annotation widths to keep neighboring nodes clear.
 The Haskell code never estimates text widths or calculates coordinates.
 
 Run `cabal run TikZOperators` from the repository root to generate examples
-and QFT fragments in `output/tikz/`. Run `make -C latex` to generate them and
+and QFT fragments in `output/tikz/`, including circuit diagrams from
+`showQuantikz`. Run `make -C latex` to generate them and
 compile the gallery to `output/pdf/operator-diagrams.pdf` (requires `latexmk`
-and a TeX installation with Forest). The gallery source is
+and a TeX installation with Forest and quantikz). The gallery source is
 `latex/operator-diagrams.tex`. Large terms retain their full structure;
 they may need a larger page or explicit decomposition for presentation.
 
@@ -516,14 +621,19 @@ while preserving field coordinates and quantum shapes.
 
 A compiler pass is a function `QOp -> QOp`. `QPP.Rewrite` contains the
 semantics-preserving ones that come with the library — merging identities,
-pushing adjoints inward, flattening compositions — and `simplifyFixpoint`, which
+reducing angles (rotations modulo four, phases modulo two), pushing adjoints
+inward, flattening compositions — and `simplifyFixpoint`, which
 applies a list of passes until nothing changes; `cleanop` runs all of the
 built-in ones. Two of them, `pushComposes` and `liftComposes`, bring a term
 into the normal forms "tensor products of compositions" and "compositions of
 tensor products", the natural starting point for a translation to a
 stabilizer or ZX representation. An analysis is a function that reads a
-term: `QPP.Syntax` has `op_qubits`, `op_support` and `dagger`, and
-`QPP.PrettyPrint` has the printers used above.
+term: `QPP.Syntax` has `op_qubits`, `op_support`, `dagger` and `adjointPair`,
+and `QPP.PrettyPrint` has the printers used above. The pairwise gate
+identities (an adjoint pair is the identity, `SX <> SX = X`, same-axis
+rotations and phases add, permutations compose) are written once, as
+`fuseOps` in `QPP.Rewrite`; `doComposes`, the circuit fuser and the type
+checker all consult it.
 
 ## Building and running
 

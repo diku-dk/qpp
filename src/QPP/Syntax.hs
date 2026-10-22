@@ -235,4 +235,11 @@ dagger = \case
   Compose a b   -> Compose (dagger b) (dagger a)
   Adjoint a     -> a
 
+-- | Whether @a@ and @b@ are each other's adjoint, syntactically, so that
+--   @a ∘ b = I@: a match suffices because every QOp is unitary. Both
+--   directions are tried because 'dagger' need not reproduce the other's
+--   spelling: @dagger SX = SX ∘ X@, while @dagger (Adjoint SX) = SX@.
+adjointPair :: QOp -> QOp -> Bool
+adjointPair a b = a == dagger b || b == dagger a
+
 

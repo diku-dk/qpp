@@ -13,7 +13,13 @@ cleanOnes op = case op of
     C (Id n)      -> Id (n+1)
     R a 0         -> Id (op_qubits a)
     -- exp(-i*pi*q/2 * I) carries a phase; C and DirectSum make it relative.
+    -- Before the angle rules, so that one pass removes an identity axis.
     R (Id n) q    -> Tensor (Phase (-q/2)) (Id n)
+    -- Angles are periodic: a nonzero rotation has a Hermitian unitary axis, so
+    -- R a 4 = I and R a 2 = -I, and a phase repeats every two.
+    Phase t | t /= reduceAngle 2 t -> Phase (reduceAngle 2 t)
+    R a 2         -> Tensor (Phase 1) (Id (op_qubits a))
+    R a t | t /= reduceAngle 4 t -> R a (reduceAngle 4 t)
     Tensor    (Id m) (Id n) -> Id (m+n)
     Tensor (Tensor a (Id m)) (Id n) -> Tensor a (Id (m+n)) -- Associate Identities to the right
     Tensor (Id m) (Tensor (Id n) b) -> Tensor (Id (m+n)) b -- Associate Identities to the left
@@ -65,25 +71,41 @@ cleanAdjoints op = case op of
 applyPermutation :: [Int] -> [Int] -> [Int]
 applyPermutation p q = [ p !! i | i <- q ]
 
+-- | The gate identities: the product @a ∘ b@ when one of them collapses it to
+--   a single node. An 'adjointPair' is the identity, the square root of X
+--   squares to X in both its spellings, same-axis rotations and phases add
+--   their angles, and permutations compose. Angles are not reduced here; that
+--   is 'cleanOnes'. Adjoints of atoms are 'dagger' and 'cleanAdjoints'.
+--   'doComp', the circuit fuser and the type checker consult this and hold no
+--   product identity of their own.
+fuseOps :: QOp -> QOp -> Maybe QOp
+fuseOps a b = case (a, b) of
+    _ | adjointPair a b      -> Just (Id (op_qubits a))
+    (SX, SX)                 -> Just X
+    (Adjoint SX, Adjoint SX) -> Just X  -- (SX SX)† = X; cleanAdjoints keeps Adjoint SX.
+    (Phase p, Phase q)       -> Just (Phase (p + q))
+    (R c s, R d t) | c == d  -> Just (R c (s + t))
+    (Permute ms, Permute ns) -> Just (Permute (applyPermutation ns ms))
+    _                        -> Nothing
+
+-- | Compose two adjacent factors: an identity operand is dropped, a gate
+--   identity from 'fuseOps' collapses the pair, and otherwise the pair is
+--   composed through shared identity padding and controls. Factors that could
+--   not be merged are returned in the list, ahead of the result.
 doComp :: QOp -> QOp -> ([QOp], QOp)
 doComp a b = case (a,b) of
     (Id n, x) | n == op_qubits x -> ([],x)
     (x, Id n) | n == op_qubits x -> ([],x)
-    (X, X) -> ([],I)
-    (Y, Y) -> ([],I)
-    (Z, Z) -> ([],I)
-    (H, H) -> ([],I)
-    (Tensor (Id m) c, Tensor (Id n ) d) | m == n -> 
+    _ | Just c <- fuseOps a b -> ([],c)
+    (Tensor (Id m) c, Tensor (Id n ) d) | m == n ->
         let (xs,e) = doComp c d in (map (\x -> Tensor (Id m) x) xs, Tensor (Id m) e)
     (Tensor c (Id m), Tensor d (Id n)) | m == n -> 
         let (xs,e) = doComp c d in (map (\x -> Tensor x (Id m)) xs, Tensor e (Id m))
-    (R c theta1, R d theta2) | c == d -> ([],R c (theta1 + theta2))
     (C c, C d) -> let
                     (xs,e) = doComp c d
                  in
                     (map C xs, C e)
     
-    (Permute ms, Permute ns) -> ([],Permute (applyPermutation ns ms))   
     _ -> ([a],b)
  
 

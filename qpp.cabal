@@ -43,6 +43,7 @@ library
       QPP.QCirc
       QPP.QCirc.Syntax
       QPP.QCirc.FromQOp
+      QPP.QCirc.Rewrite
       -- Symbolic well-formedness and rotation-axis checks:
       QPP.TypeCheck
       -- QOp program transformations for optimization and analysis:
@@ -377,6 +378,8 @@ test-suite MPSTest
 test-suite QCircTest
   import: test-common
   type: exitcode-stdio-1.0
+  build-depends:
+    containers
   main-is: QCircTest.hs
   other-modules: Generators
 

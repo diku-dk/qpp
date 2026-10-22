@@ -9,6 +9,7 @@ import Data.List (sort)
 import Data.Maybe (isJust)
 import Data.Ratio (denominator)
 import qualified Data.Set as S
+import QPP.Rewrite (fuseOps)
 import QPP.Syntax
 import qualified QPP.TypeCheck.Pauli as P
 import QPP.Util (permInvert)
@@ -236,21 +237,23 @@ composeEvidence a b
   -- Multiplying known Pauli forms includes phases such as XY = iZ.
   | Just p <- pauliForm ea, Just q <- pauliForm eb = ExactPauli (P.compose p q)
   -- Even when the operands are not Pauli, their product may be.
-  | adjointPair a b = ExactPauli (P.scalar 0) -- A A† = I.
-  | term a == SX && term b == SX = ExactPauli (P.letter P.PX) -- SX² = X.
-  | otherwise = preferPauli (pauliForm fused) phase -- Try fusion's exact form, then a phase-only proof.
+  | otherwise = preferPauli (pauliForm collapsed) phase -- Try the collapsed node's exact form, then a phase-only proof.
   where
     ea = evidence a
     eb = evidence b
     -- <|> tries another proof only on Nothing. Some rules do not need a
     -- phase proof for each operand: for example, X R_Z(t) is Hermitian.
-    phase = conjugationPhase a b <|> phaseProof fused <|> commuting
+    phase = conjugationPhase a b <|> phaseProof collapsed <|> commuting
         <|> reflection a b <|> reflection b a -- Cover both A R_K(t) and R_K(t) A.
-    -- Fusion uses the ordinary rotation rule, including its scalar cases.
-    fused = case (view a, view b) of
-      (Rotation axis t, Rotation axis2 u)
-        | term axis == term axis2 -> rotationEvidence (evidence axis) (t + u) -- Same-axis angles add.
-      _ -> Unknown
+    -- A product that a gate identity collapses to one node (A A† = I,
+    -- SX SX = X, same-axis rotations, permutations) takes that node's
+    -- evidence. A fused rotation reuses the checked axis: check builds every
+    -- R with checkedRotation, so a's view is Rotation whenever its term is an
+    -- R. The other results are leaves, with the ordinary leaf proofs.
+    collapsed = case fuseOps (term a) (term b) of
+      Just (R _ t) | Rotation axis _ <- view a -> rotationEvidence (evidence axis) t
+      Just c  -> evidence (checkedLeaf (qubits a) c)
+      Nothing -> Unknown
     -- In the commuting case, both operand phases must be known:
     -- (AB)† = exp(i*pi*(p_a+p_b+w)) AB.
     commuting = do
@@ -263,8 +266,8 @@ composeEvidence a b
 -- These patterns cover U (A U†) and (U A) U† without reassociating the tree.
 conjugationPhase :: Checked -> Checked -> Maybe Rational
 conjugationPhase a b = case (view a, view b) of
-  (_, Product middle u) | adjointPair a u -> phaseProof (evidence middle) -- U (A U†).
-  (Product u middle, _) | adjointPair u b -> phaseProof (evidence middle) -- (U A) U†.
+  (_, Product middle u) | adjointPair (term a) (term u) -> phaseProof (evidence middle) -- U (A U†).
+  (Product u middle, _) | adjointPair (term u) (term b) -> phaseProof (evidence middle) -- (U A) U†.
   _ -> Nothing
 
 -- If A anticommutes with K, then A R_K(t) A† = R_K(t)†.
@@ -288,12 +291,6 @@ commutation a b
   | otherwise = Nothing
   where
     isScalar x = isJust (pauliForm (evidence x) >>= P.scalarPhase)
-
--- A syntactic inverse match suffices because both operands are unitary.
--- Check both directions: dagger need not reconstruct the same syntax
--- (for example, dagger SX = SX X, while dagger (Adjoint SX) = SX).
-adjointPair :: Checked -> Checked -> Bool
-adjointPair a b = term a == dagger (term b) || term b == dagger (term a)
 
 -- Recover the source term for equality, adjoint and support checks. Keeping
 -- syntax in the view avoids a separate term/children pair that must agree.

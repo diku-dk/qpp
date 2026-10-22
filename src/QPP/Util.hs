@@ -87,6 +87,15 @@ permInvert ks = map snd $  -- For each index in the output, find its position in
     sort [ (k, i) | (i, k) <- zip [0..] ks ]
 
 
+-- Angles, in units of π
+
+-- | Reduce an angle modulo a period into @(-period/2, period/2]@. Rotation
+--   angles are periodic modulo four and phase parameters modulo two; the
+--   half-open interval keeps small negative angles readable.
+reduceAngle :: Rational -> Rational -> Rational
+reduceAngle period t = t - period * fromInteger (ceiling ((t - period / 2) / period))
+
+
 -- | Minimal adjacent-swap indices (0-based) sending permutation p to identity.
 --   Swap index i means swapping positions i and i+1.
 --
