@@ -1,5 +1,5 @@
 \documentclass[11pt,a4paper]{article}
-\usepackage[hmargin=23mm,vmargin=20mm,headheight=14pt,headsep=7mm,footskip=11mm]{geometry}
+\usepackage[hmargin=20mm,vmargin=17mm,headheight=14pt,headsep=7mm,footskip=11mm]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage{amsmath,amsthm}
 \usepackage{newtxtext,newtxmath}
@@ -7,6 +7,7 @@
 \usepackage{booktabs,tabularx,array}
 \usepackage{enumitem}
 \usepackage{titlesec}
+\usepackage{needspace}
 \usepackage{xcolor}
 \usepackage{listings}
 \usepackage{fancyhdr}
@@ -23,17 +24,18 @@
 \fancyfoot[C]{\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{3pt plus 1pt}
-\titlespacing*{\section}{0pt}{2.5ex plus .5ex minus .2ex}{1.2ex plus .2ex}
-\titlespacing*{\subsection}{0pt}{2ex plus .5ex minus .2ex}{1ex plus .2ex}
-\titlespacing*{\paragraph}{0pt}{1.5ex plus .5ex minus .2ex}{1em}
+\setlength{\parskip}{2pt plus 1pt}
+\titlespacing*{\section}{0pt}{2ex plus .5ex minus .2ex}{1.2ex plus .2ex}
+\titlespacing*{\subsection}{0pt}{1.5ex plus .5ex minus .2ex}{1ex plus .2ex}
+\titlespacing*{\paragraph}{0pt}{1.25ex plus .5ex minus .2ex}{1em}
 \setlist{nosep,leftmargin=1.5em}
 \setlength{\emergencystretch}{2em}
-\lstset{language=Haskell,basicstyle=\small\ttfamily,
+\lstset{language=Haskell,basicstyle=\fontsize{10}{11}\selectfont\ttfamily,
   backgroundcolor=\color{codebg},frame=single,rulecolor=\color{black!15},
   framerule=0.3pt,framesep=5pt,columns=fullflexible,
   keepspaces=true,showstringspaces=false,breaklines=true,
-  aboveskip=8pt,belowskip=8pt}
+  aboveskip=5pt,belowskip=5pt,
+  literate={⊗}{{$\otimes$}}1 {∘}{{$\circ$}}1}
 \newcommand{\Q}{\mathbb{Q}}
 \newcommand{\Z}{\mathbb{Z}}
 \newcommand{\C}{\mathbb{C}}
@@ -59,62 +61,41 @@
 \begin{abstract}
 \noindent Quantum Programming Playground (QPP) represents quantum operators
 as symbolic programs whose angles are rational multiples of $\pi$.
-Their floating-point evaluation can be replaced by exact arithmetic:
-every valid finite operator expression has its entries in a computable
-cyclotomic field. We introduce the language and the necessary algebra,
-derive this closure result, and develop dense matrix and direct statevector
-evaluation as two implementations of the same semantics. A worked
-two-qubit example connects syntax, matrices, amplitudes, and probabilities.
-We then explain why matrix product states can remain cyclotomic even when
-their singular value decompositions cannot, and develop exact rank
-factorization into a four-week HQP project and an MSc thesis proposal.
-An independent student project develops the prototype scalar arithmetic
-into a more efficient implementation.
-The accompanying prototype implements scalar arithmetic and both backends,
-with exact expected-value and randomized tests. The MPS work remains
-proposed; no comparative performance claim is made.
+Every valid finite expression has its entries in a computable cyclotomic
+field. We derive this closure result and implement dense matrix and direct
+statevector evaluation as two realizations of one semantics. Worked examples
+connect syntax, coefficients, amplitudes, and probabilities. Exact matrix
+product states need a different factorization: their amplitudes can remain
+cyclotomic when their singular values cannot. We develop rank factorization
+into a four-week HQP project and an MSc thesis proposal, with an independent
+project on scalar efficiency. The prototype implements scalar arithmetic
+and both evaluators, including measurement and reset through unnormalized
+branches, with expected-value and randomized tests.
+MPS remains proposed; no comparative performance claim is made.
 \end{abstract}
 
 \section{Why exact evaluation, and what must change?}
 \label{sec:intro}
-Compiler transformations ask algebraic questions: does a circuit followed
-by its adjoint give identity, does a rewrite preserve every amplitude,
-and is an apparently zero entry actually zero? Floating-point evaluation
-answers within a tolerance. Exact evaluation makes equality and
-cancellation mathematical decisions.
-
-QPP is a Haskell framework whose symbolic operator language, \code{QOp},
-has several evaluators. Its \code{Rational} angles must become exact
-\emph{complex coefficients} during evaluation.
-
-Rationals alone cannot represent a Hadamard coefficient $1/\sqrt2$ or
-a nonreal phase. Cyclotomic fields contain both and are closed under
-the operations used to compose gates. Each finite expression uses a
-finite-degree number field; its degree and coefficient sizes determine cost.
-
-The dense evaluator is a small-circuit oracle; direct statevector
-evaluation applies operators without constructing their matrices.
-Both support later MPS work.
+Compiler validation asks whether a rewrite preserves every amplitude or
+an apparently zero entry actually vanishes. Exact evaluation decides these
+questions without a tolerance. QPP is a Haskell framework whose symbolic
+operator language, \code{QOp}, has several evaluators. Its \code{Rational}
+angles become complex coefficients during evaluation: rationals alone
+cannot represent $1/\sqrt2$ or a nonreal phase. Cyclotomic fields contain
+both and support gate composition. Their degree and coefficient sizes
+determine the arithmetic cost.
 
 \paragraph{Scope and reading guide.}
-We assume basic linear algebra and familiarity with qubits, but no
-knowledge of QPP or algebraic number computation. Two explicitly marked
-optional arguments use Galois theory to prove limitations of SVD and
-normalization; their conclusions suffice for the evaluator design.
-Sections~\ref{sec:language}--\ref{sec:closure} introduce the language,
-semantics, and exactness theorem. Section~\ref{sec:example} works through
-two examples; Sections~\ref{sec:dense}--\ref{sec:implementation} specify
-implementation and validation. The final sections develop MPS and the
-student projects in tensor networks and scalar arithmetic. Initial
-execution supports unitary operators on supplied
-cyclotomic vectors. Measurement, initialization by measurement and reset,
-and arbitrary normalization are separate extensions.
+We assume linear algebra and qubits, but no QPP or algebraic-number background.
+Language, algebra, and examples lead into shared foundations, two evaluators,
+costs, and MPS projects. Listings assume basic Haskell; equations specify their
+meaning independently. Optional Galois arguments prove the limitations of SVD
+and normalization. The prototype supports cyclotomic vectors, measurement,
+and reset, but excludes arbitrary normalization.
 
 \section{The operator language and its mathematical objects}
 \label{sec:language}
-A \code{QOp} constructor builds an abstract syntax tree and performs no
-numerical evaluation. The full datatype appears below, after the conventions
-needed to read it.
+A \code{QOp} constructor builds syntax, performing no numerical evaluation.
 
 \paragraph{Terms, operators, and vectors.}
 Constructor names appear in monospace; $u,t$ are terms. For a valid term
@@ -167,14 +148,24 @@ data QOp
 \end{minipage}
 
 \paragraph{How code expressions are read.}
-QPP also has infix notation: \code{u <.> t} is \code{Tensor u t},
+In QPP's infix notation, \code{u <.> t} is \code{Tensor u t},
 \code{u <+> t} is \code{DirectSum u t}, and \code{u <> t} is
-\code{Compose u t}. We mostly use constructors to expose the structure.
+\code{Compose u t}.
 For example, \code{Compose (C X) (Tensor H (Id 1))} applies a Hadamard
 to the first qubit and then a controlled $X$.
-Structural equality of syntax trees is distinct from equality of their
-denotations: \code{Compose H H} and \code{Id 1} are different terms
-denoting the same matrix.
+Different terms can denote the same matrix: \code{Compose H H} and
+\code{Id 1} are semantically, but not syntactically, equal.
+
+\paragraph{Programs.}
+QPP defines \code{Program = [Step]}, with \code{Unitary QOp},
+\code{Initialize [Nat] [Bool]}, and \code{Measure [Nat]} as step constructors.
+The exact prototype accepts all three constructors. Unitary steps have the
+input width; measurement and reset retain unnormalized branches
+(Section~\ref{sec:measurement}). All steps are validated before execution.
+For $p=[\code{Unitary}\ u_1,\ldots,\code{Unitary}\ u_m]$ in execution order,
+\[
+\sem p\,v=\sem{u_m}\cdots\sem{u_1}\,v,\qquad \sem{[\,]}\,v=v.
+\]
 
 \section{One operator semantics for both evaluators}
 \label{sec:matrix}
@@ -433,6 +424,8 @@ N=\lcm\!\left(\{8\}\cup\{2b:\code{Phase}\ (a/b)\preceq t\}
 For instance, occurrences of \code{Phase (1/3)} and \code{R Z (1/5)}
 give the sufficient index $\lcm(8,6,20)=120$, of degree $\varphi(120)=32$.
 This index need not be the minimal conductor.
+After validating all subterms, the prototype replaces zero-angle rotations
+by identities before applying this rule; unused axes contribute no denominators.
 
 \begin{proposition}
 Every valid $n$-qubit term $t$ denotes a unitary matrix with entries in
@@ -452,6 +445,10 @@ purely imaginary parameter is unitary. A zero-angle rotation is identity.
 If an input vector has entries in $K_M$, application stays in
 $K_{\lcm(N,M)}$. General field inverses are unnecessary for unitary
 evaluation, but will be needed for MPS rank factorization.
+Exact synthesis asks the converse kind of question: Giles and Selinger
+characterize the matrices synthesizable over Clifford+$T$ with ancillas
+using $\Z[1/\sqrt2,i]$ \cite{giles}. Here a given expression determines
+its field; arbitrary rational angles need not stay in that fixed ring.
 
 \section{Worked evaluation: a phase and a non-Pauli rotation}
 \label{sec:example}
@@ -462,8 +459,8 @@ phaseGate q = C (Phase q)
 bell = Compose (C X) (Tensor H (Id 1))
 example = Compose (Tensor (Id 1) (phaseGate (1/3))) bell
 \end{lstlisting}
-Here \code{phaseGate q} acts on one qubit: it controls a zero-qubit
-scalar. Let $h=1/\sqrt2$, $z=e^{i\pi/3}=\zeta_6$, and
+\code{phaseGate q} controls a zero-qubit scalar. Let $h=1/\sqrt2$,
+$z=e^{i\pi/3}=\zeta_6$, and
 $B=\sem{\code{bell}}$. In the basis $(00,01,10,11)$, the matrix evaluator
 constructs
 \[
@@ -499,7 +496,6 @@ z=\zeta_{24}^{\,4},\qquad
 h=\frac{\zeta_{24}^{\,3}+\zeta_{24}^{-3}}2,\qquad
 \|U\ket{00}\|^2=h^2(1+\bar z z)=1.
 \]
-The angle $1/3$ determines $\zeta_6$; the nonzero amplitudes are $h$ and $hz$.
 
 \paragraph{Observing the relative phase.}
 Applying the inverse Bell circuit gives
@@ -509,10 +505,8 @@ B^\dagger U\ket{00}
 \]
 Since $z+\bar z=1$, the squared amplitudes are
 $|1+z|^2/4=3/4$ and $|1-z|^2/4=1/4$.
-If the phase gate had been discarded, the result would instead be
-$\ket{00}$. This calculation uses exact inner products and shows why
-phase-sensitive equality matters. Computing these probabilities does
-not require implementing random sampling or state collapse.
+Discarding the phase gate would give $\ket{00}$. These exact probabilities
+require neither random sampling nor state collapse.
 
 \paragraph{A rotation about the Hadamard axis.}
 Let $r=\code{R H (1/3)}$. Since $H^2=I$, \eqref{eq:rotation} gives
@@ -531,155 +525,281 @@ with the original input:
 =\left(\frac{\sqrt3}{2}-\frac{i}{2\sqrt2}\right)\ket0
  -\frac{i}{2\sqrt2}\ket1.
 \]
-These are the first-column entries of the matrix. Their squared
-magnitudes are $7/8$ and $1/8$, so the norm is already one.
-This example exercises the half angle, its sign, field promotion,
-and recursive axis application without calling trigonometric functions.
+The squared magnitudes of these first-column entries are $7/8$ and $1/8$,
+so the norm is one. This exercises the half angle, sign, and recursive axis action.
 
+\section{Shared implementation foundations}
+\label{sec:implementation}
+With \code{St = QPP.Exact.State} and
+\code{SV = QPP.Semantics.Exact.Statevector}, evaluate the preceding example:
+\begin{lstlisting}[label=lst:public-example]
+evaluateExample = do
+  let input = St.ket [0, 0]
+      output = SV.apply (SV.evalOp example) input
+  norm2 <- St.normSquared defaultLimits output
+  pure (St.amplitudes output, norm2)
+\end{lstlisting}
+The result is \code{Right} $([h,0,0,hz],1)$ in \code{Cyclo} values.
+Both backends share \code{StateT}. Ordinary \code{ket}, \code{evalOp},
+\code{apply}, and \code{evalProg} match the numerical signatures, use
+\code{defaultLimits}, and raise runtime errors on failure. Their
+\code{WithLimits} variants take explicit limits and return \code{Result}.
+\code{evalProg program input rng} returns \code{(output, [], rng)} for a
+unitary program. Run \code{cabal run ExactEvaluation} for an example.
+
+\subsection{Representation and field ownership}
+An immutable \code{Field} records $N$, $\Phi_N$, and the distinguished
+embedding. A \code{Coeff} stores $d=\varphi(N)$ reduced rational coordinates,
+padded with zeros; \code{Cyclo} pairs them with their field.
+Arrays share that context:
+\begin{lstlisting}
+data Buffer = Buffer !Field !(V.Vector Coeff)
+data StateT = StateT !Int !Buffer
+\end{lstlisting}
+\code{V.Vector} is a boxed array. A \code{StateT n} buffer has $2^n$
+coefficients in its field's basis: $D$ amplitudes occupy $Dd$ rational slots.
+Matrices use the same buffer with a different shape. Internal constructors
+and checked imports enforce these invariants.
+
+Public operations promote to the least-common-multiple field; kernels
+keep it. In listings, \code{C} names \code{QPP.Exact.Checked}, \code{S}
+names scalar arithmetic, and \code{Result a} is \code{Either ExactError a}.
+Listings reproduce constructor recursions, omitting imports and deriving
+clauses. Adaptations and omitted helpers are identified where used.
+
+\subsection{Validation and resource limits}
+\code{C.checkOp} checks widths, permutations, and Hermiticity of nonzero-angle
+rotation axes. Its symbolic rules cover primitives and supported composite
+forms; rejection does not prove non-Hermiticity. Thus \code{R H q} is
+accepted; \code{R SX q} requires $q=0$. An exact matrix test
+$A=A^\dagger$ is a possible future fallback.
+
+The private \code{CheckedOp} tree caches widths, dimensions, and field indices.
+Write $\check u$ for the successful validation of source term $u$;
+$\sem{\check u}=\sem u$. Validation precedes pruning zero-angle axes.
+\code{C.view} exposes the checked constructors: \code{Id} gets its width
+from the node, and \code{X,Y,Z,H,SX} become \code{Primitive g}.
+\code{C.toQOp} recovers the validated, pruned syntax for the dense evaluator.
+
+Limits bound root index, degree, coordinate slots, and integer sizes.
+Preflight uses unbounded dimension arithmetic and checks $N$ before
+factorization. Workspace includes constants, retained arrays, promotion,
+and temporaries. Conservative checks may reject later cancellation;
+they bound neither wall time nor heap bytes. Errors distinguish invalid
+input, width mismatch, division by zero, and exhaustion, with term and
+zero-based program-step context. Even equality can fail; exhaustion
+never means inequality or approximation.
+
+\subsection{Linear algebra and the normalization boundary}
+\code{HilbertSpace} supplies scaling, addition, subtraction, and \code{inner};
+squared norm is \code{inner v v}. Numerical Matrix uses \code{CMat} for
+both states and operators; Statevector supplies the instance for states.
+The class additionally requires
+\begin{lstlisting}
+Scalar v ~ Complex (Realnum v), Floating (Realnum v)
+norm      :: v -> Realnum v
+normalize :: v -> v
+\end{lstlisting}
+For $a,b\in K$ and $v,w\in K^D$, the field-compatible operations are
+\[
+av+bw\in K^D,\qquad
+\langle v,w\rangle=\sum_j\overline{v_j}w_j\in K,\qquad
+\langle v,v\rangle\in K\cap\mathbb R_{\ge0}.
+\]
+The prototype implements these directly in \code{QPP.Exact.State}:
+\begin{lstlisting}
+scale       :: Limits -> Cyclo -> StateT -> Result StateT
+add, sub    :: Limits -> StateT -> StateT -> Result StateT
+inner       :: Limits -> StateT -> StateT -> Result Cyclo
+normSquared :: Limits -> StateT -> Result Cyclo
+\end{lstlisting}
+The dense backend has corresponding operator operations, with
+$\langle A,B\rangle=\tr(A^\dagger B)$. Linear combinations need not be
+unitary, so only construction by \code{evalOp} guarantees unitarity.
+A future class should separate these capabilities from normalization,
+using an associated scalar type. The prototype claims no \code{HilbertSpace}
+instance. Cyclotomic scalars are already complex; \code{Complex Cyclo}
+and \code{Data.Complex}'s \code{RealFloat} constraint are inappropriate
+\cite{base}.
+
+Arbitrary normalization is an algebraic obstruction, not just an interface
+problem: $(1,2+\sqrt2)$ has squared norm $7+4\sqrt2$, whose square root
+is noncyclotomic. Unitary evaluation preserves the input norm and needs
+no normalization.
+
+\paragraph{Optional proof of the normalization boundary (Galois theory).}
+Every subfield of a cyclotomic field is Galois over $\Q$: its Galois group
+is a quotient of an abelian group, whose subgroups are all normal
+\cite{milne}. Put $F=\Q(\sqrt2)$, $a=7+4\sqrt2$, and $a'=7-4\sqrt2$.
+The field norm gives $aa'=17$, so neither $a$ nor $a'$ is a square in $F$:
+the norm of a square would be a rational square.
+For $\sqrt{a'}$ to lie in $F(\sqrt a)$, the ratio
+$a'/a=(a')^2/17$ would have to be a square in $F$, but $\sqrt{17}\notin F$.
+Thus $\Q(\sqrt a)=F(\sqrt a)$ lacks a conjugate of $\sqrt a$ and is not
+Galois. Neither $\sqrt a$ nor its reciprocal can be cyclotomic.
+\label{sec:normalization}
+
+Measurement avoids this obstruction by retaining projected vectors and using
+ratios of squared norms. Section~\ref{sec:measurement} extends the following
+unitary evaluators to measurement and reset without changing scalar fields.
+
+\Needspace{18\baselineskip}
 \section{Constructing an exact dense matrix}
 \label{sec:dense}
-The dense evaluator follows the table in Section~\ref{sec:matrix}.
-It makes every matrix entry available for inspection and serves as an
-oracle for direct and MPS evaluation.
+\code{QPP.Semantics.Exact.Matrix} constructs $\sem u$ explicitly.
+Its internal \code{OpT n buffer} stores $2^{2n}$ entries in row-major order.
+\code{evalOpWithLimits} calls \code{C.checkOp}, selects \code{C.fieldIndex checked}
+using \code{S.makeField}, checks \code{matrixBudget}, then invokes
+\code{evaluate limits field checked}.
 
-\paragraph{Validation before arithmetic.}
-First check widths and permutations throughout the tree, and prove that
-every nonzero-angle rotation axis is Hermitian. QPP's symbolic checker proves
-this for Hermitian primitives, suitable tensors and direct sums, control,
-adjoints, and certain products and conjugations. These are sufficient
-rules; a failure to prove Hermiticity does not establish non-Hermiticity.
-For instance, \code{R H q} is accepted; \code{R SX q} requires $q=0$.
-A future fallback could construct an axis matrix exactly and test
-$A=A^\dagger$. It is not needed for the first implementation.
-
-The exact wrapper produces a private tree with verified widths, so
-recursive evaluation does not repeatedly rediscover dimensions.
-Then collect the field index and enforce resource limits before allocating
-matrices. An external input vector may require a larger common field when
-the resulting operator is applied.
-
-\paragraph{Storage and recursion.}
-Store checked dimensions and a flat row-major array of cyclotomic values.
-In Haskell, a boxed vector holds these exact values, whose sizes can vary;
-the existing floating-point BLAS/LAPACK representation is unsuitable.
-The following schematic cases show where the scalar operations enter:
-\begin{lstlisting}
-matrix (Compose u t) = multiply (matrix u) (matrix t)
-matrix (Tensor u t)  = kronecker (matrix u) (matrix t)
-matrix (Adjoint u)   = conjugateTranspose (matrix u)
-matrix (R u q) =
-  let a = matrix u
-      (c, d) = rotationCoefficients q
-  in addMatrix (scale c (identity (dimension a))) (scale d a)
+\Needspace{9\baselineskip}
+\subsection{The recursive evaluator}
+This excerpt preserves every constructor case. \code{M} names the matrix
+kernels; the omitted \code{pack} attaches width and field to their array.
+Omitted local helpers lift Kronecker product ($\otimes$), multiplication
+($\circ$), direct sum (\code{<+>}), addition (\code{.+}), scaling (\code{.*}),
+and adjoint (\code{adj}) through \code{Result}, propagating failures.
+Their mathematical operations are specified below.
+\begin{lstlisting}[label=lst:matrix-evaluate]
+evaluate :: Limits -> Field -> C.CheckedOp -> Result OpT
+evaluate limits field checked =
+  pack (C.qubits checked) field <$> eval (C.toQOp checked)
+  where
+    eval op = case op of
+      Id n    -> ident (2^n)
+      Phase q -> phase q
+      X  -> gate C.X
+      Y  -> gate C.Y
+      Z  -> gate C.Z
+      H  -> gate C.H
+      SX -> gate C.SX
+      R axis q -> do
+        (c,d) <- S.rotationC limits field q
+        if S.isZeroC d
+          then c .* ident (2 ^ op_qubits axis)
+          else do
+            a <- eval axis
+            (c .* ident (M.dimension a)) .+ (d .* pure a)
+      Permute ks -> pure (M.permutation field ks)
+      C a -> do
+        mat <- eval a
+        ident (M.dimension mat) <+> pure mat
+      Tensor a b    -> eval a ⊗ eval b
+      Compose a b   -> eval a ∘ eval b
+      DirectSum a b -> eval a <+> eval b
+      Adjoint a     -> adj (eval a)
+    ident dim = pure (M.identity field dim)
+    phase q = M.scalar <$> S.phaseC limits field q
+    gate g = M.Matrix 2 <$> primitive limits field g
 \end{lstlisting}
-In this sketch, \code{rotationCoefficients} implements \eqref{eq:rotation}
-by root construction, exact halving, and multiplication.
-The zero-qubit phase is a $1\times1$ matrix throughout, including when
-it is placed under control or direct sum.
+\code{primitive} supplies \eqref{eq:primitives}; \code{rotationC} implements
+\eqref{eq:rotation}. When $d=0$, the axis
+need not be evaluated. A phase subterm is $1\times1$; control or direct
+sum incorporates it as a block in a larger matrix. In particular,
+\code{C (Phase q)} gives $\diag(1,e^{i\pi q})$, of dimension two.
 
-For compatible matrices and a column vector, use
+\subsection{Application, correctness, and cost}
+For compatible matrices and a column vector, the kernels compute
 \[
 (AB)_{ij}=\sum_k A_{ik}B_{kj},\qquad
 (Av)_i=\sum_j A_{ij}v_j,\qquad
 (A\otimes B)_{ir+k,\,js+l}=A_{ij}B_{kl},
 \]
-where $B$ has shape $r\times s$. Strict loops accumulate exact scalars
-starting from zero. Skip an entry only after an exact zero test.
-Conjugate transpose exchanges indices and conjugates each coefficient;
-no magnitude threshold or numerical diagonalization is involved.
+where $B$ has shape $r\times s$. Conjugate transpose exchanges indices
+and conjugates coefficients. Accumulation starts at exact zero, and
+entries are skipped only after exact zero tests. \code{apply} checks
+widths, promotes matrix and input to a common field, and computes $Av$.
+\code{evalProg} selects one field for the entire program; the shared runner
+applies unitaries, measurements, and resets in execution order.
 
-\paragraph{Cost and meaning of equality.}
-For $D=2^n$, storing the matrix costs $O(D^2)$ field elements,
-multiplication costs $O(D^3)$ field operations, and application costs
-$O(D^2)$. These are counts of operations in $K_N$, not bit complexities.
-Entrywise equality decides whether two evaluated operators are equal,
-including global phase. In a common polynomial basis, it reduces to
-rational equality.
+Structural induction shows that successful evaluation of $\check u$ stores
+the entries of $\sem u$, providing an oracle for the other backends.
+For $D=2^n$, the output occupies $O(D^2)$ field elements;
+multiplication costs $O(D^3)$ field operations and application $O(D^2)$.
+Entrywise equality includes global phase and reduces to rational equality
+after promotion. These operation counts are not bit complexities.
 
+\Needspace{18\baselineskip}
 \section{Direct exact statevector evaluation}
 \label{sec:sv}
-For a checked term $u$ and compatible vector $v$, the direct evaluator
-computes $\sem u\,v$. The brackets denote the same operator as before.
-We traverse its syntax to update amplitudes without building the matrix,
-first embedding operator and input coefficients in a common
-cyclotomic field $K$.
+For a valid source term $u$, put $D_u=2^{n_u}$ and choose a common cyclotomic
+field $K$ containing its coefficients and those of the input.
+The direct evaluator computes $\sem u\,v$ for $v\in K^{D_u}$ without
+constructing $\sem u$. Vectors may be unnormalized or entangled, in the
+computational-basis order of Section~\ref{sec:language}.
 
-A statevector is a length-$2^n$ array. The computational basis vector
-$\ket j$ has a one at index $j$ and zeros elsewhere; on zero qubits
-the sole basis vector is $(1)$. We also admit unnormalized vectors:
-linearity requires the evaluator to work on arbitrary vectors, not only
-physical states of unit norm.
+\Needspace{9\baselineskip}
+\subsection{Deriving the direct actions}
+\paragraph{Identity, phase, and one-qubit gates.}
+With $z_q=e^{i\pi q}$, the elementary actions are
+\[
+\sem{\code{Id}\ n}\,v=v,\qquad
+\sem{\code{Phase}\ q}\,(a)=(z_q a),\qquad
+G\binom{a}{b}=
+\binom{G_{00}a+G_{01}b}{G_{10}a+G_{11}b}.
+\]
+Here $G$ is the matrix of a primitive or its prepared adjoint.
 
-\paragraph{The recursive rules.}
-Identity leaves its input unchanged, and \code{Phase q} maps the
-one-component vector $(z)$ to $(e^{i\pi q}z)$.
-For a one-qubit primitive $G=(G_{ij})$, each relevant amplitude pair
-$(a,b)^T$ becomes $(G_{00}a+G_{01}b,G_{10}a+G_{11}b)^T$.
-The composite cases are
-\begin{align}
-\sem{\code{Compose}\ u\ t}\,v
- &=\sem u\,(\sem t\,v),\\
+\paragraph{Rotation and composition.}
+Distributing matrix application over the finite rotation formula gives
+\begin{equation}
 \sem{\code{R}\ u\ q}\,v
- &=c_qv+d_q(\sem u\,v),\label{eq:svrotation}\\
+=(c_qI+d_q\sem u)v
+=c_qv+d_q(\sem u\,v).
+\label{eq:svrotation}
+\end{equation}
+First compute $w=\sem u\,v$, retaining $v$, then combine $c_qv_j+d_qw_j$
+entrywise. This handles \code{H}, \code{C X}, and composite axes alike.
+Composition applies the right child first:
+\[
+\sem{\code{Compose}\ u\ t}\,v=\sem u\,(\sem t\,v).
+\]
+
+\paragraph{Direct sum and control.}
+Write $v=v_0\mathbin{\|}v_1$ for concatenation of equal-length vectors.
+The leading qubit selects the two contiguous blocks. Block multiplication gives
+\begin{align}
 \sem{\code{DirectSum}\ u\ t}\,(v_0\mathbin{\|}v_1)
  &=(\sem u\,v_0)\mathbin{\|}(\sem t\,v_1),\\
 \sem{\code{C}\ u}\,(v_0\mathbin{\|}v_1)
  &=v_0\mathbin{\|}(\sem u\,v_1).
 \end{align}
-Here $c_q,d_q$ are from \eqref{eq:rotation}, and $\mathbin{\|}$ means
-concatenation. The two blocks correspond to the leading selector bit:
-each has half the length of the full vector.
-The control rule leaves the zero block untouched and evaluates $u$
-on the one block. It also covers a controlled scalar phase.
+The second rule is the first with identity on the zero block.
+In particular, $\sem{\code{C (Phase q)}}(a,b)^T=(a,z_qb)^T$.
 
-The rotation rule recursively evaluates the \emph{whole axis term}.
-For example, \code{R H q} forms $c_qv+d_qHv$, and
-\code{R (C X) q} forms $c_qv+d_q\sem{\code{C X}}v$.
-Neither case needs a dense axis matrix. The original $v$ must remain
-available until both contributions have been formed; blindly overwriting
-its storage while evaluating the axis would invalidate the formula.
+These blocks must retain their norms. The phased Bell state of
+\eqref{eq:bell} has branches $(h,0)^T$ and $(0,hz)^T$, each with squared
+norm $1/2$. Normalizing them separately would change the state and break
+linearity. No recursive rule normalizes a vector.
 
-\paragraph{Why branches must not be normalized.}
-The squared norm of a vector is
-$v^\dagger v=\sum_j\overline{v_j}v_j$.
-For the phased Bell state in \eqref{eq:bell}, splitting by the first qubit
-gives $v_0=(h,0)^T$ and $v_1=(0,hz)^T$.
-Each branch has squared norm $1/2$, while the complete vector has norm
-one. These branch weights are part of the amplitudes. Normalizing each
-branch separately would change the state and break linearity.
-The same issue occurs in intermediate vectors of a rotation.
-
-Consequently no recursive step calls a general normalization operation.
-If the input is normalized, unitary evolution already preserves its norm.
-Exact field arithmetic also permits computing inner products
-$v^\dagger w$ and squared norms directly. This gives useful validation
-without asking the scalar type to take arbitrary square roots.
-
-\subsection*{Tensor layout, adjoints, and correctness}
+\paragraph{Tensor application and memory layout.}
 \label{sec:layout}
-Tensor application deserves a separate derivation because its input
-may be entangled. In general there are no vectors $x,y$ with
-$v=x\otimes y$. The algorithm must act on the full array of amplitudes.
-For \code{Tensor u t}, put $A=\sem u$, $B=\sem t$, and
-$D_x=2^{n_x}$. Reshape $v$ into the $D_u\times D_t$ array
-$V_{ij}=v_{iD_t+j}$. Then the Kronecker definition gives
+In general an entangled input cannot be written $v=x\otimes y$.
+For \code{Tensor u t}, put $A=\sem u$ and $B=\sem t$.
+View the full vector as the $D_u\times D_t$ array
+$V_{ij}=v_{iD_t+j}$. The Kronecker definition gives
 \begin{equation}
-\bigl((A\otimes B)v\bigr)_{iD_t+j}
- =\sum_{k,l}A_{ik}B_{jl}V_{kl}.
+\bigl(\sem{\code{Tensor}\ u\ t}\,v\bigr)_{iD_t+j}
+ =\sum_{k=0}^{D_u-1}\sum_{\ell=0}^{D_t-1}A_{ik}B_{j\ell}V_{k\ell}.
 \label{eq:tensoraction}
 \end{equation}
-Compute it in two stages:
+Separate the two sums:
 \[
-W_{ij}=\sum_l B_{jl}V_{il},\qquad
-V'_{ij}=\sum_k A_{ik}W_{kj};
-\qquad V'=AVB^T.
+W_{ij}=\sum_{\ell=0}^{D_t-1}B_{j\ell}V_{i\ell},
+\qquad
+V'_{ij}=\sum_{k=0}^{D_u-1}A_{ik}W_{kj}.
 \]
-The transpose here is an ordinary transpose, not a conjugate transpose.
-It comes from arranging column-vector amplitudes into rows.
-Recursively apply $\sem t$ to each contiguous row, viewed as a column
-vector, then apply $\sem u$ to each column gathered with stride $D_t$.
-Flatten $V'$ in the original order. These equations justify the algorithm;
-it never forms $A$, $B$, or $A\otimes B$.
+The first stage applies $B$ to each contiguous row, passed as a column
+vector. The second applies $A$ to each gathered column. In matrix notation,
+\begin{equation}
+W=VB^T,\qquad V'=AW=AVB^T,\qquad
+w_{iD_t+j}=V'_{ij}.
+\label{eq:svlayout}
+\end{equation}
+This is an ordinary transpose: the index $j$ selects the output of $B$;
+no coefficient is conjugated. These stages use the child transformations
+without constructing $A$, $B$, or $A\otimes B$. A zero-qubit factor has
+dimension one, so the same rule includes scalar tensor factors.
 
 For example, let $T=\diag(1,\zeta_8)$ and $v=(a,b,c,d)^T$.
 The row step for $H\otimes T$ gives $(a,\zeta_8b)$ and
@@ -688,166 +808,321 @@ $(c,\zeta_8d)$; the column step gives
 (H\otimes T)v=\frac1{\sqrt2}
 (a+c,\ \zeta_8(b+d),\ a-c,\ \zeta_8(b-d))^T.
 \]
-This also illustrates why conjugating $T$ in the row step would be wrong.
 
-\paragraph{Permutations and adjoints.}
-For \code{Permute ks}, scatter $v'_{f(j)}=v_j$ using the bit permutation
-from Section~\ref{sec:matrix}. For example, \code{Permute [1,2,0]}
-maps bits $abc$ to $bca$, so index $4$ maps to $1$.
-A gather implementation must instead use $f^{-1}$.
-For adjoints, compile a dagger flag: reverse composition order,
-negate phase and rotation angles, invert permutations, and recurse
-through tensors, control, and direct sums.
-The Hermitian primitives are self-adjoint; $\mathrm{SX}^\dagger$
-uses the conjugate-transposed primitive table.
-For a valid axis the rotation rule is
-$\sem{\code{R}\ u\ q}^\dagger=\sem{\code{R}\ u\ (-q)}$;
-the axis term remains $u$.
+\paragraph{Permutations.}
+Let $f$ be the basis-index permutation specified by \code{ks}.
+The matrix rule sends $\ket j$ to $\ket{f(j)}$. Hence
+\[
+\bigl(\sem{\code{Permute ks}}\,v\bigr)_j=v_{f^{-1}(j)}.
+\]
+For example, \code{Permute [1,2,0]} maps bits $abc$ to $bca$:
+output index $1$ receives input index $4$.
+For forward execution, the prepared \code{Permute} stores the inverse
+permutation of the $n$ \emph{wire positions}. \code{Vector.permute} computes the induced
+basis-index gather $f^{-1}(j)$ on demand; no $2^n$-entry index table is stored.
 
+\paragraph{Preparing adjoints.}
+An opaque vector-transforming function does not expose its adjoint.
+We retain the expression structure during preparation and use
+\[
+(AB)^\dagger=B^\dagger A^\dagger,\qquad
+(A\otimes B)^\dagger=A^\dagger\otimes B^\dagger,\qquad
+(A\oplus B)^\dagger=A^\dagger\oplus B^\dagger.
+\]
+Control follows from $I\oplus A$. At the leaves, phases use
+$\overline{z_q}=z_{-q}$, gate tables use
+$(G^\dagger)_{ij}=\overline{G_{ji}}$, and permutations invert $f$.
+For a nonzero-angle rotation, $c_q$ is real, $d_q$ is purely imaginary,
+and the checked axis $A$ is Hermitian, so
+\begin{equation}
+\sem{\code{R}\ u\ q}^{\dagger}
+=(c_qI+d_qA)^\dagger=c_qI-d_qA
+=\sem{\code{R}\ u\ (-q)}.
+\label{eq:svadjoint}
+\end{equation}
+These laws let preparation push adjoints to leaves. For rotations, the
+axis remains unchanged. Zero-angle rotations were already validated
+and replaced by identity.
+
+\subsection{The prepared representation}
+\label{sec:plans}
+The prepared tree specializes \code{QOp} to one field: angles and primitive
+symbols become coefficients, and adjoints are pushed to leaves.
+It supports coefficient reuse and promotion; validated syntax with a
+coefficient cache is an alternative.
+\code{QPP.Exact.Internal.Plan} defines the datatype and \code{compile};
+\code{QPP.Semantics.Exact.Statevector} defines \code{runPlan}.
+\begin{lstlisting}[label=lst:plan-type]
+data Plan a = Plan !Int (Action a)
+data Action a
+  = Id | Scalar a | Gate (V.Vector a)
+  | R (Plan a) a a | C (Plan a) | Permute [Int]
+  | Tensor (Plan a) (Plan a)
+  | DirectSum (Plan a) (Plan a)
+  | Compose (Plan a) (Plan a)
+\end{lstlisting}
+\code{Plan dim action} records dimension: composition preserves it,
+tensor multiplies it, and direct sum adds equal dimensions. \code{Coeff}
+uses \code{OpT}'s field. Derived \code{Foldable} and \code{Traversable}
+instances visit constants for validation and embedding.
+
+\subsection{Compiling a reusable operator}
+With \code{P} naming the plan module, \code{OpT}, shown positionally,
+stores width, conservative
+counts of constants and live workspace (\code{Requirements}), field, and
+plan. The listing replaces record construction by positional construction;
+the preparation steps are unchanged:
+\begin{lstlisting}[label=lst:plan-evalop,breaklines=true]
+data OpT = OpT Int P.Requirements Field (P.Plan Coeff)
+evalOpWithLimits :: Limits -> QOp -> Result OpT
+evalOpWithLimits limits op = do
+  checked <- C.checkOp limits op
+  field <- S.makeField limits (C.fieldIndex checked)
+  let required = P.requirements checked
+  P.budget limits field (C.dimension checked) required
+  plan <- P.compile limits field checked
+  pure (OpT (C.qubits checked) required field plan)
+\end{lstlisting}
+\code{OpT} retains the plan, not a second copy of the checked tree.
+
+\paragraph{The compiler.}
+\code{compile} constructs the plan recursively. \code{Forward} prepares
+$\sem u$ and \code{Backward} prepares $\sem u^\dagger$.
+The helper \code{directedAngle} keeps the angle in \code{Forward} and
+negates it in \code{Backward}; \code{opposite} exchanges the directions.
+\code{phaseC}, \code{rotationC}, and \code{primitive} construct the exact
+coefficients of Sections~\ref{sec:matrix} and~\ref{sec:closure}.
+\Needspace{32\baselineskip}
+\begin{lstlisting}[label=lst:plan-compile]
+data Direction = Forward | Backward
+compile :: Limits -> Field -> C.CheckedOp -> Result (Plan Coeff)
+compile limits field = eval Forward
+  where
+    eval direction op = Plan (C.dimension op) <$> case C.view op of
+      C.Id -> pure Id
+      C.Phase q -> Scalar <$> S.phaseC limits field (directedAngle direction q)
+      C.Primitive g -> Gate <$> gate direction g
+      C.R axis q -> do
+        (c,d) <- S.rotationC limits field (directedAngle direction q)
+        if S.isZeroC d then pure (Scalar c)
+        else do
+          a <- eval Forward axis
+          pure (R a c d)
+      C.C a -> C <$> eval direction a
+      C.DirectSum a b -> DirectSum <$> eval direction a <*> eval direction b
+      C.Tensor a b -> Tensor <$> eval direction a <*> eval direction b
+      C.Compose a b -> case direction of
+        Forward -> Compose <$> eval Forward a <*> eval Forward b
+        Backward -> Compose <$> eval Backward b <*> eval Backward a
+      C.Adjoint a -> do
+        Plan _ action <- eval (opposite direction) a
+        pure action
+      C.Permute ks -> pure $ Permute $ case direction of
+        Forward -> inversePermutation ks
+        Backward -> ks
+    gate Forward g = primitive limits field g
+    gate Backward g = do
+      entries <- primitive limits field g
+      V.generateM 4 $ \index ->
+        let (row,column) = index `quotRem` 2
+        in S.conjugateC limits field (entries V.! (2*column + row))
+\end{lstlisting}
+\begin{samepage}
+The outer \code{Plan} preserves dimension, including for scalar rotations.
+Hermitian axes compile \code{Forward} in either direction: only $d$
+changes sign in \eqref{eq:svadjoint}. Adjoint reverses composition and
+leaves no node; permutations become gather maps.
+\par
+\end{samepage}
+
+\subsection{Executing and applying the plan}
+\code{Vector.Transform} is \code{V.Vector Coeff -> Result (V.Vector Coeff)}.
+\code{runPlan} returns this function; its helpers implement the actions
+above. The listing expands the implementation's composition and direct-sum notation:
+\begin{lstlisting}[label=lst:plan-run]
+runPlan :: Limits -> Field -> P.Plan Coeff -> Vector.Transform
+runPlan limits field = eval
+  where
+    eval (P.Plan _ action) = case action of
+      P.Id -> pure
+      P.Scalar c -> Vector.scale limits field c
+      P.Gate g -> Vector.applyGate limits field g
+      P.R axis c d -> \v -> do
+        av <- eval axis v
+        Vector.linearCombination limits field c v d av
+      P.C a -> Vector.directSum pure (eval a)
+      P.DirectSum a b -> Vector.directSum (eval a) (eval b)
+      P.Compose a b -> \v -> eval b v >>= eval a
+      P.Tensor a b -> Vector.tensor (P.dimension a) (P.dimension b)
+                                    (eval a) (eval b)
+      P.Permute gather -> pure . Vector.permute gather
+\end{lstlisting}
+\code{P.dimension (P.Plan dim action) = dim} supplies tensor shapes.
+Composition passes the right child's output to the left. Execution
+computes new amplitudes, but does not recompute gate coefficients,
+construct composite matrices, or select a field.
+
+\Needspace{15\baselineskip}
+\paragraph{A construction and execution trace.}
+For the worked \code{R H (1/3)} example, \code{compile} selects the
+\code{C.R} case and recursively prepares \code{H}. In the field $K_{24}$,
+let \code{hs} store $(h,h,h,-h)$, $h=1/\sqrt2$, and let
+\code{c}, \code{d} store the coordinates of $c=\sqrt3/2$, $d=-i/2$.
+Compilation constructs these nodes:
+\begin{lstlisting}
+pH = Plan 2 (Gate hs)
+p  = Plan 2 (R pH c d)
+\end{lstlisting}
+Interpreting their stored coordinates as field elements gives
+\[
+\operatorname{runPlan}_{K_{24}}(\code p,(1,0)^T)
+=c(1,0)^T+d\operatorname{runPlan}_{K_{24}}(\code{pH},(1,0)^T)
+=(c+dh,dh)^T.
+\]
+\code{Gate} returns $(h,h)^T$; \code{R} combines it with the retained input.
+The six constants are reused across applications, including tensor rows
+and columns. Identical subtrees are not deduplicated.
+
+\paragraph{Application, promotion, and programs.}
+\code{apply} validates widths, state, and constants under its current limits.
+It promotes operator and input from $K_N,K_M$ to $K_{\lcm(N,M)}$, rechecking
+workspace, then calls the shared-field interpreter:
+\begin{lstlisting}[label=lst:plan-apply]
+applyIn :: Limits -> Field -> P.Plan Coeff -> StateT -> Result StateT
+applyIn limits field plan (St.StateT n (Buffer _ input)) = do
+  output <- runPlan limits field plan input
+  pure (St.StateT n (Buffer field output))
+\end{lstlisting}
+\code{St} names the internal state module. Same-field plans are reused;
+promotion is temporary, so repeated larger-field applications repeat embedding.
+\code{evalProg} instead preflights all steps in one field, compiling each
+unitary as it is reached. Measurement and reset use the shared interpreter.
+An empty program preserves its validated input and RNG.
+
+\subsection{Correctness and cost}
+Let $\operatorname{prep}_K(\delta,\check u)$ denote the compiler's local
+\code{eval direction op}. Its two-direction induction invariant is
+\begin{equation}
+\begin{aligned}
+\operatorname{runPlan}_K(\operatorname{prep}_K(\code{Forward},\check u),v)
+ &=\sem u\,v,\\
+\operatorname{runPlan}_K(\operatorname{prep}_K(\code{Backward},\check u),v)
+ &=\sem u^\dagger v.
+\end{aligned}
+\label{eq:planmeaning}
+\end{equation}
+\code{compile} selects \code{Forward}, so its execution gives $\sem u\,v$.
+Here $K$ contains gate and input coefficients; limits and errors are
+suppressed to describe successful execution.
 \begin{proposition}
-The ideal direct evaluator returns $w=\sem u\,v$ for every checked term $u$
+The ideal direct evaluator returns $w=\sem u\,v$ for every accepted term $u$
 and compatible vector $v$. If $v$ has cyclotomic entries, so does $w$.
 Moreover $w^\dagger w=v^\dagger v$.
 \end{proposition}
 \begin{proof}
-Induct over the checked expression. The structural recurrences are the
-actions of the corresponding block matrices. Equation~\eqref{eq:tensoraction}
-proves the tensor case; the primitive, permutation, and adjoint cases
-follow from their definitions. Closure follows from field arithmetic,
+Induct over the checked expression in both directions. Each interpreter
+clause realizes its vector recurrence. Backward composition reverses its
+children; backward rotation changes the angle but prepares the Hermitian
+axis forward. The adjoint laws establish \eqref{eq:planmeaning}.
+Closure follows from field arithmetic,
 and $w^\dagger w=v^\dagger\sem u^\dagger\sem u\,v=v^\dagger v$.
 \end{proof}
-The resource-bounded implementation must return this value on success,
-or an explicit error; the proposition does not promise that every input
-fits its configured limits.
-For $G$ local gate applications on $n$ qubits, the cost is $O(G2^n)$
-field operations and $O(2^n)$ storage with reusable buffers.
-A general expression of expanded tree size $s$ costs $O(s2^n)$,
-up to indexing overhead. Naive recursive rotations can retain
-$O(h2^n)$ live elements at nesting depth $h$; constant-many-vector
-working storage is not a bound for every expression tree.
-\section{Connecting the design to QPP}
-\label{sec:implementation}
-QPP's \code{HilbertSpace} already supplies scalar multiplication,
-addition, subtraction, and \code{inner}; squared norm is \code{inner v v}.
-The Matrix backend uses \code{CMat} for both \code{OpT} and \code{StateT},
-so both inherit these operations. Statevector supplies the instance for
-states; its \code{OpT} is an application plan.
-The obstacle is the class's additional requirements:
-\begin{lstlisting}
-Scalar v ~ Complex (Realnum v), Floating (Realnum v)
-norm      :: v -> Realnum v
-normalize :: v -> v
-\end{lstlisting}
-With scalars in a common cyclotomic field $K$, linear combinations and
-inner products need only field operations and conjugation:
+\paragraph{Promotion preserves execution.}
+Let $\iota:K\hookrightarrow L$ be the embedding of Section~\ref{sec:scalar},
+applied to vector entries and plan constants, preserving shape. Then
+\begin{equation}
+\iota\bigl(\operatorname{runPlan}_K(p,v)\bigr)
+=\operatorname{runPlan}_L(\iota(p),\iota(v)).
+\label{eq:promotion}
+\end{equation}
+For compatible $p,v$ over $K$, induction proves \eqref{eq:promotion} because
+embeddings preserve arithmetic and commute with indexing and concatenation.
+They preserve the selected roots, conjugation, and zero tests, so promotion
+of a compiled plan agrees with compilation in $L$. Hence \code{apply}'s
+promotion from operator/input fields $K_N,K_M$ to $K_{\lcm(N,M)}$ preserves
+the result. Successive application proves the unitary program semantics;
+Section~\ref{sec:measurement} establishes measurement and reset correctness.
+
+\paragraph{Execution cost.}
+After preparation, $G$ gates of bounded arity on $n$ qubits cost
+$O(G2^n)$ field operations. In a sequential gate circuit, working vectors
+need $O(2^n)$ live field elements, excluding stored plan constants.
+The prototype allocates immutable arrays; this is a live-storage bound,
+not a claim of buffer reuse. For an expanded expression tree with $s$
+nodes, execution costs $O(s2^n)$ field operations, with indexing overhead.
+Nested rotations may retain $O(h2^n)$ live elements at depth $h$.
+Field construction, compilation, validation, and promotion are additional
+costs; field degree and integer sizes determine bit costs.
+
+\section{Measurement and reset without normalization}
+\label{sec:measurement}
+\paragraph{Stored vector and physical state.}
+For nonzero $v\in K^{2^n}$, the physical state is $\rho_v=vv^\dagger/(v^\dagger v)$;
+the implementation stores $v$. Let $P_b^{(k)}$ project onto bit $b$ on wire $k$.
+The Born probabilities and stored branch are
+\begin{equation}
+ w_b=\|P_b^{(k)}v\|^2,\qquad
+ p_b=\frac{w_b}{\langle v,v\rangle}=\frac{w_b}{w_0+w_1},\qquad v_b=P_b^{(k)}v.
+ \label{eq:measurement}
+\end{equation}
+These quantities remain cyclotomic; the zero vector cannot be measured.
+For a selected nonzero branch,
+$\rho_{v_b}=P_b^{(k)}\rho_vP_b^{(k)}/p_b$, exactly the normalized conditional
+density matrix. Later operations therefore have the usual physical meaning
+without square roots. Replacing $v$ by $cv$, $c\ne0$, preserves every $p_b$.
+However, \code{amplitudes}, \code{inner},
+\code{normSquared}, and \code{equal} still describe the stored vector;
+they do not implicitly normalize or compare rays. The checked function
+\code{probability limits state wire outcome} computes $p_b$.
+
+\paragraph{Sampling and the program interface.}
+With outcome list $o$ and RNG stream $r:s$, the single-wire transition is
 \[
-av+bw\in K^D,\qquad
-\langle v,w\rangle=\sum_j\overline{v_j}w_j\in K,\qquad
-\langle v,v\rangle\in K\cap\mathbb R_{\ge0}.
+ \sem{\code{Measure [k]}}(v,o,r:s)=(v_b,b:o,s),\qquad
+ b=\begin{cases}0&r(w_0+w_1)<w_0,\\1&\text{otherwise}.\end{cases}
 \]
-The squared norm can remain a \code{Cyclo}; no square root or
-\code{RealT} conversion is needed. Refactor the interface into a linear
-and inner-product capability with an associated scalar type, and a
-separate capability for norm and normalization. The exact prototype
-exposes checked versions of the former operations below, without claiming
-an instance of the current \code{HilbertSpace}. Cyclotomic scalars are
-already complex; \code{Complex Cyclo} and the standard
-\code{Data.Complex} arithmetic's \code{RealFloat} constraint are
-inappropriate \cite{base}. \code{QOp}'s rational angles remain unchanged.
+Each call consumes one finite \code{Double} in $[0,1)$, even when an outcome
+is certain. It treats $r$ as its exact dyadic rational; equality selects one.
+This retains QPP's finite-precision RNG convention, while the threshold
+comparison is exact. \code{compareReal} checks reality by conjugation and
+equality algebraically. For a nonzero real value
+$\sum_j c_j\zeta_N^j$, certified dyadic bounds enclose
+$\sum_j c_j\cos(2\pi j/N)$ until its sign is determined.
+Outward-rounded arithmetic bounds the alternating
+\href{https://dlmf.nist.gov/4.19#E2}{cosine} and
+\href{https://dlmf.nist.gov/4.24#E3}{arctangent} series, and
+$\pi=16\arctan(1/5)-4\arctan(1/239)$. The sampler uses the same sign kernel
+on the known-real difference $w_0-r(w_0+w_1)$.
+Exhausting the bit limit reports an error, never a guessed outcome.
 
-\subsection{Representation and field ownership}
-The prototype uses Section~\ref{sec:scalar}'s power basis;
-Section~\ref{sec:scalarproject} proposes representation optimizations.
-An immutable private \code{Field} contains an index $N>0$ and the
-coefficients of $\Phi_N$; its degree is $d=\varphi(N)$.
-The integer polynomial coefficients use the same rational storage.
-A private \code{Coeff} is a boxed vector of exactly $d$ rationals.
-Every rational is reduced, has a positive denominator, and represents
-zero as $0/1$. Polynomial results are reduced modulo $\Phi_N$ and padded
-to length $d$; this is coefficient normalization, not state normalization.
+Program execution is shared in \code{Internal.Evaluation}, with the kernel
+in \code{Internal.Measurement}. Only unitary actions differ.
+\code{Measure ks} processes \code{reverse ks} and prepends each bit,
+placing the new block in \code{ks} order before earlier outcomes.
+\code{Initialize ks targets} measures those wires, applies $X$ wherever
+the observed and target bits differ, and discards its new outcomes.
+The RNG still advances. Initialization needs distinct, in-range wires and
+matching target length; empty lists are no-ops. Reset returns a pure branch;
+averaging over its hidden outcomes can produce a mixed state.
+The stored squared norm need not be the probability of the recorded outcomes,
+since resets hide samples.
 
-An exported \code{Cyclo} pairs a context with a \code{Coeff}.
-A shared coefficient buffer stores one context and an array of
-\code{Coeff}s; matrix and state wrappers retain their own quantum shapes.
-For $D$ amplitudes the dense format stores $Dd$ rational coordinates.
-Constructors are hidden: public imports check dimensions, coordinates,
-and limits before creating these values.
-The context includes the distinguished embedding
-$\zeta_N=e^{2\pi i/N}$; no numerical root selection occurs.
-
-\paragraph{Arithmetic and promotion.}
-Arithmetic follows the polynomial algorithms in Section~\ref{sec:scalar}.
-Euclidean remainders and their B\'ezout coefficients are scaled together
-to make each nonzero remainder monic, curbing intermediate coefficient growth.
-Operations expose checked functions returning \code{Either ExactError};
-no \code{Floating}, \code{RealFloat}, or partial division instance is needed.
-Same-context kernels never change the field. Public binary operations
-first promote both operands to the least-common-multiple index; equality
-across contexts uses this rule too. Resource exhaustion is an error,
-not a false inequality.
-
-\code{evalOp} chooses the index in \eqref{eq:conductor}.
-\code{fromAmplitudes} imports all entries into one common field.
-\code{apply} promotes the operator and input to their joint field once;
-\code{evalProg} collects all operator and input indices before execution.
-Matching immutable contexts are reused. Promotion uses substitution and
-reduction, with no automatic subfield minimization.
-
-\subsection{Evaluator interface and bounded execution}
-\code{QPP.Exact.Scalar} and \code{QPP.Exact.Checked} support the two
-backends \code{QPP.Semantics.Exact.Matrix} and
-\code{QPP.Semantics.Exact.Statevector}.
-Both backends re-export the shared \code{QPP.Exact.State} type and operations:
-
-\begin{minipage}{\linewidth}
+\paragraph{Example.}
+Using the Bell circuit of Section~\ref{sec:example} and $h=1/\sqrt2$:
 \begin{lstlisting}
-evalOp :: Limits -> QOp -> Either ExactError OpT
-ket :: Limits -> [Bool] -> Either ExactError StateT
-fromAmplitudes :: Limits -> [Cyclo] -> Either ExactError StateT
-apply :: Limits -> OpT -> StateT -> Either ExactError StateT
-evalProg :: Limits -> Program -> StateT
-         -> Either ExactError StateT
-scale :: Limits -> Cyclo -> StateT -> Either ExactError StateT
-add :: Limits -> StateT -> StateT -> Either ExactError StateT
-inner :: Limits -> StateT -> StateT -> Either ExactError Cyclo
+SV.evalProg [Unitary bell, Measure [0], Initialize [1] [False]]
+            (St.ket [0,0]) [0.8,0.2]
 \end{lstlisting}
-\end{minipage}
+returns a state with amplitudes $(0,0,h,0)$, outcomes \code{[True]}, and
+an empty RNG. Measurement selected $h\ket{11}$; reset flipped its last bit.
+The stored squared norm is $1/2$, but another measurement of wire zero
+returns one with probability one, by \eqref{eq:measurement}.
 
-\code{OpT} holds a matrix or a compiled application plan;
-\code{StateT} holds a vector without asserting unit norm.
-Here \code{normSquared limits v = inner limits v v}; subtraction uses
-scaling by $-1$ and addition. These operations check shapes and promote
-coefficients to a common field. Matrix linear combinations and the
-Frobenius inner product $\tr(A^\dagger B)$ use the same arithmetic, but
-their results need not be unitary and must not masquerade as checked
-\code{QOp} plans. The modules expose amplitude and matrix-entry accessors, and
-checked entrywise equality; observations return scalars with their context.
-\code{fromAmplitudes} checks a nonzero power-of-two length and field limits.
-A \code{Program} is a list of \code{Unitary}, \code{Measure}, or
-\code{Initialize} steps. Preflight checks the entire list against the input
-width, rejects the latter two kinds with step indices, and then executes
-unitaries in list order. An empty program returns a valid input directly.
-Direct \code{evalOp} compiles scalar constants once; \code{apply} reuses
-the plan or embeds its constants into the input's common field.
-
-\paragraph{Limits and failures.}
-Bound root index, field degree, coefficient slots, and integer sizes.
-Validation checks retained storage; each operation reserves its temporary
-buffers separately. Empty programs and same-field equality need no arithmetic
-workspace. Check dimensions such as $D^2d$ with unbounded integers before
-allocation, and $N$ before factorization. Bound integer sizes before
-sums/products and after reduction; conservative checks may reject later
-cancellation. These limits do not guarantee wall time or heap bytes.
-Distinguish invalid input, width mismatch, division by zero, and resource
-exhaustion. Invalid operators retain the checker's offending term; program
-width and field-degree errors identify the introducing step, counting from zero.
-Never approximate on failure.
-
+\section{Resource growth and implementation evidence}
 \subsection{Field growth: cost and ways to control it}
 \label{sec:growth}
-There are three separate growth mechanisms: the number of amplitudes
-or tensor bonds, the field degree $d$, and rational coefficient bit
-lengths. Even an unentangled state can require large $d$.
+Three independent sizes grow: amplitudes or bonds, field degree $d$,
+and rational coefficient bit lengths. Even product states can need large $d$.
 For distinct odd prime angle denominators $p_1,\ldots,p_k$, the
 sufficient-field rule can give
 \[
@@ -855,75 +1130,57 @@ N=8\prod_jp_j,\qquad d=\varphi(N)=4\prod_j(p_j-1).
 \]
 Rotations with denominators $101$ and $103$ give $N=83224$ and $d=40800$.
 A ten-qubit statevector then has $2^{10}d=41\,779\,200$ rational-coordinate
-slots in the unshared dense layout, before temporary storage and integer
-payloads. A product-state circuit can incur this cost: low entanglement
-alone does not protect dense scalar coordinates. With the straightforward
-polynomial algorithms, addition costs $O(d)$ and multiplication with
-reduction costs $O(d^2)$ rational operations; growing integer sizes add
-further cost. The earlier field-operation counts hide this factor.
+slots before temporaries and integer payloads. Low entanglement alone
+does not protect dense scalar coordinates. Polynomial addition costs
+$O(d)$ and multiplication with reduction $O(d^2)$ rational operations;
+integer growth adds further cost, hidden by the earlier field-operation counts.
 
-The common field is sufficient, not always necessary for each value.
-Cancellation can yield a rational number in a huge ambient field.
-Conversely, for distinct primes $p,q$, the number
+Cancellation can leave a rational number in a huge ambient field.
+Conversely, for distinct primes $p,q$,
 $\zeta_p\zeta_q=\zeta_{pq}^{p+q}$ is primitive of order $pq$, since
 $p+q$ is coprime to $pq$. Its degree really is $(p-1)(q-1)$.
-A compact symbolic expression can delay expanded coordinates, but cannot
-make that algebraic degree disappear. We propose the following distinct
-approaches; none guarantees efficient evaluation of every program.
+Symbolic expressions can delay expansion but cannot remove this degree.
+The following approaches offer partial remedies.
 
 \paragraph{Reduce unnecessary field extensions.}
-Reduce rational angles and use actual root orders:
+Use reduced angles and actual root orders:
 $\zeta_{2b}^{a}$ has order $2b/\gcd(|a|,2b)$, and
 $\zeta_{4b}^{a}$ has order $4b/\gcd(|a|,4b)$.
-Validated, phase-preserving rewrites can cancel inverse gates or combine
-rotations about the same axis before field selection. Global phases must
-remain: rotations are generally periodic in $q$ with period $4$, not $2$.
-Collect roots after such rewrites; do not bypass axis validation.
+Validated rewrites can cancel inverses or combine same-axis rotations
+before collecting roots. Preserve global phase: rotations have general
+period $4$ in $q$, not $2$. Axis validation must precede cancellation.
 
 \paragraph{Store fewer coordinates and reuse arithmetic.}
-Sparse reduced polynomials store only nonzero coordinates; special forms
-for zero, rationals, and roots of unity avoid large mostly empty arrays.
-Cache field contexts, reduction data, and repeated embeddings.
+Sparse polynomials and special forms for rationals and roots of unity
+avoid mostly empty arrays. Cache fields, reduction data, and embeddings.
 Basis-state unitary evaluation stays in $D_N$, permitting integer
 numerators with power-of-two denominators rather than general rational
 arithmetic. Sparse products or reduction may nevertheless become dense,
 and MPS elimination needs general division.
 
 \paragraph{Delay promotion and expansion.}
-Per-coefficient or per-core fields can postpone a common-field embedding
-until values interact; exact subfield descent can shrink results after
-cancellation. Both require additional bookkeeping and exact conversion
-checks. Factored states, MPS, or shared scalar expressions may retain
-products instead of expanding them. For example, product-state cores
-can keep unrelated angle fields separate. Contraction, inner products,
-or equality may eventually force them together. Small bonds alone are
-insufficient if every core still uses a large common-field dense basis.
-These are optimization directions beyond the first common-field prototype.
+Per-coefficient or per-core fields postpone promotion until values interact;
+exact subfield descent can shrink results after cancellation. Both require
+bookkeeping and checked conversions. Factored states or shared scalar
+expressions can retain products: product-state cores may keep unrelated
+angle fields separate until contraction, inner products, or equality.
+Small bonds alone do not help if every core uses a large common field.
+These optimizations are future work.
 
 \subsection{Proof obligations and implementation evidence}
-The propositions establish the ideal algorithms. The code must maintain
-the context/coordinate invariant and return the specified result on success.
-Tests provide evidence, not a proof: backend agreement can miss a shared
-sign or wire-order error.
-
-The 84 \code{ExactTest} tests cover scalar laws, embedding composition,
-independent polynomial identities, and dense/direct agreement.
-Expected-value cases include
+The \code{ExactTest} suite checks field invariants and backend agreement,
+supplemented by independent expected values to detect shared errors:
 $\sem{\code{R Z 1}}=-iZ$,
 $\sem{\code{R (Id 0) 2}}=[-1]$,
 $\sem{\code{Phase (1/2)}}=[i]$,
-the two worked examples, and non-self-inverse wire permutations.
-Further cases cover inverse circuits, unequal tensor widths, direct sums,
-QFTs through three qubits against the analytic Fourier matrix, composite axes,
-rewrites, and input/resource errors.
-Randomized properties use exact equality and preserve valid shapes when
-shrinking failures. Degree-48 inversion cases exercise coefficient growth.
-All eight repository suites pass (645 tests). Run \code{cabal test all};
-\code{cabal run ExactEvaluation} reproduces the phased Bell example.
-Approximate export is for observation only, never equality or pivoting.
+the worked examples, and QFTs through three qubits against the analytic DFT.
+Further tests cover arithmetic, embeddings, composite operators, promotion,
+rewrites, and failures. Randomized tests use exact equality and
+shape-preserving shrinking. Run \code{cabal test all}.
 
 \section{What exact MPS evaluation can and cannot mean}
 \label{sec:mps}
+\subsection{Representation and cut ranks}
 A statevector has $2^n$ amplitudes even when its structure is simple.
 For $n\ge1$, a matrix product state (MPS) stores those amplitudes as
 products of small matrices:
@@ -934,19 +1191,16 @@ v_{b_1\cdots b_n}
 A^{[j]}_b\in K^{\chi_{j-1}\times\chi_j},\quad \chi_0=\chi_n=1.
 \label{eq:mps}
 \end{equation}
-The matrices $A^{[j]}_b$ are the cores, $b\in\{0,1\}$ is the physical
-qubit index, and $\chi_j$ is a bond dimension. Site $j$ here corresponds
-to QPP wire $j-1$. Multiplying the selected matrices gives one scalar
-amplitude. If every bond is at most $\chi$, the storage is $O(n\chi^2)$.
-Product states have bond dimension one; entanglement may require larger
-bonds, potentially exponential in $n$.
+The matrices $A^{[j]}_b$ are cores, $b\in\{0,1\}$ indexes the qubit,
+and $\chi_j$ is a bond dimension. Site $j$ is QPP wire $j-1$.
+Multiplication gives one scalar amplitude. Bonds at most $\chi$ require
+$O(n\chi^2)$ storage. Product states have bonds one; entanglement can
+require exponentially large bonds.
 
-At width zero, store one scalar $z\in K$. The existing \code{Phase q}
-is already the required scalar operator: it sends $z$ to $e^{i\pi q}z$.
-No new syntax is needed. Tensoring a zero-qubit value with a nonempty MPS
-scales one core; two zero-qubit values multiply. Its squared norm is
-$\bar z z$. This explicit base case also represents zero, whereas an
-empty product of cores alone would always give one.
+At width zero, store $z\in K$, with squared norm $\bar z z$.
+\code{Phase q} already sends it to $e^{i\pi q}z$.
+Tensoring this scalar with an MPS scales one core; two scalars multiply.
+This base case includes zero, unlike an empty product of cores.
 
 \paragraph{Unfolding a state across a cut.}
 Group the first $k$ bits into a row index and the remaining bits into a
@@ -966,10 +1220,9 @@ $\sigma_\alpha^2$ are the nonzero eigenvalues of
 $(M^{(k)})^\dagger M^{(k)}$ \cite{schollwock}.
 The left vectors are columns of $U$; the right vectors are the
 complex conjugates of columns of $V$.
-SVD is attractive numerically because it supplies orthonormal bases and
-controlled approximation by discarding small singular values.
+Discarding small singular values gives controlled numerical approximation.
 
-\paragraph{The operational consequence: preserve the state, replace SVD.}
+\subsection{The SVD obstruction}
 Cyclotomic entries do not guarantee cyclotomic singular values.
 For the integer matrix
 \[
@@ -980,8 +1233,7 @@ the squared singular values are not cyclotomic. Consequently neither
 are the singular values: squaring a cyclotomic number would stay
 cyclotomic. The optional argument below proves this claim.
 
-This is an obstruction for actual states, not just arbitrary matrices.
-The sum of squared entries of $M$ is $8$. Padding $M/\sqrt8$ to
+The squared entries of $M$ sum to $8$. Padding $M/\sqrt8$ to
 $4\times4$ gives the amplitudes of a normalized four-qubit state whose
 Schmidt values are noncyclotomic. It is QOp-preparable: a Hadamard and
 two Hadamards controlled on its one branch give nonzero amplitudes
@@ -990,25 +1242,19 @@ places them in the required entries. Such permutations can be built
 from $X$ and multiply controlled $X$; they are more general than QPP's
 wire-reordering \code{Permute}.
 
-The state itself still has cyclotomic amplitudes. Therefore exact MPS
-representation is possible, while SVD-based canonicalization cannot
-in general stay in cyclotomic arithmetic. QPP's existing numerical
-\code{Exact} MPS setting means no truncation; it still uses floating-point
-SVD and should not be confused with the algebraic exactness proposed here.
+QPP's numerical \code{Exact} MPS setting only disables truncation;
+its floating-point SVD does not provide algebraic exactness.
 
 \paragraph{Optional proof of the obstruction (Galois theory).}
-This paragraph uses splitting fields and the Galois correspondence;
-it is not needed to implement the algorithms.
 The displayed cubic has no rational root and discriminant
 $916=4\cdot229$, a nonsquare. It is therefore irreducible with Galois
 group $S_3$, so adjoining one root gives a non-Galois cubic field.
-In contrast, every field between $\Q$ and a cyclotomic field is Galois:
-the cyclotomic Galois group is abelian, hence every subgroup is normal
-\cite{milne}. No root of this cubic can belong to a cyclotomic field.
+By the Galois criterion in Section~\ref{sec:normalization}, no root
+of this cubic can belong to a cyclotomic field.
 Dividing its positive square roots by $\sqrt8$, itself cyclotomic,
 does not remove the obstruction for the normalized state.
 
-\subsection*{Rank factorization and exact local updates}
+\subsection{Rank factorization and exact local updates}
 \label{sec:rank}
 We need a factorization that removes linear dependence without finding
 orthonormal bases. Let $T\in K^{m\times n}$ have rank $r>0$.
@@ -1027,8 +1273,7 @@ computable using field arithmetic alone. For example,
 =\begin{pmatrix}1\\2\end{pmatrix}
  \begin{pmatrix}1&2&3\end{pmatrix};
 \]
-the factorization retains the one-dimensional column space and requires
-no singular vectors or normalization.
+the column space has dimension one.
 
 Implement the inverse action by elimination, not by forming an explicit
 inverse. Select pivots by exact nonzero tests and handle the zero matrix
@@ -1068,246 +1313,124 @@ E_n=[\,v^\dagger v\,].
 \]
 One core alone generally does not contain the state's norm.
 
-A local rank factorization removes dependence in its local matrix.
-It need not give globally minimal bonds if surrounding block bases
-are redundant; that requires justified rank-revealing sweeps.
-No tolerance or singular-value truncation is involved. Bond dimensions,
-field degree, and rational coefficient sizes all remain independent
-sources of cost. Exactness does not guarantee bounded entanglement
-or an efficient representation for every circuit.
-\section{HQP project: an exact MPS interpreter in four weeks}
+A local factorization need not give globally minimal bonds when surrounding
+block bases are redundant; that requires rank-revealing sweeps.
+No tolerance or truncation is involved. Bonds, degree, and coefficient
+sizes remain independent costs; exactness guarantees no efficiency bound.
+
+Hubig et al. study numerical MPO arithmetic with SVD, deparallelisation,
+and delinearisation \cite{hubig}. The projects below study exact rank
+decisions and coefficient growth in these representations.
+
+\section{Student projects}
+\titlespacing*{\paragraph}{0pt}{.25ex plus .25ex}{1em}
+\subsection{HQP project: an exact MPS interpreter in four weeks}
 \label{sec:hqp}
-\paragraph{Question and starting point.}
-Can rank factorization replace SVD in a useful exact MPS simulator?
-Supply the tested scalar module, exact Matrix/Statevector oracles,
-circuit corpus, and a compiler from the supported \code{QOp} fragment
-to positioned gates with validated wire indices. Scalar arithmetic and
-front-end development are outside this project. Prerequisites are Haskell,
-tensor indexing, Gaussian elimination, and the circuit model.
+\paragraph{Starting point and scope.}
+Supply scalars, oracles, tests, and a positioned-gate compiler before week 1;
+the compiler is still a supervisor task. Prerequisites: Haskell, linear algebra,
+and circuits.
+Implement checked cores, basis states, contraction, local updates, and rank
+factorization. Support $X,Y,Z,H,\mathrm{SX}$, rotations about $X,Y,Z$, global phase,
+CNOT, controlled rational phase, and SWAP; all two-qubit gates are adjacent.
+The supplied compiler handles composition, tensor padding, and adjoints in
+this fragment. Reject other control forms, \code{DirectSum}, composite axes, and
+nonadjacent gates.
 
-\paragraph{Required scope.}
-Implement opaque MPS cores over the supplied field with checked bond
-dimensions; basis-state construction; exact contraction; one-site and
-adjacent two-site unitary updates; and rank factorization. Support
-$X,Y,Z,H,\mathrm{SX}$, rational rotations about $X,Y,Z$, global phase,
-CNOT, controlled rational phase, and adjacent SWAP.
-The supplied compiler flattens composition and tensor padding.
-General nested control, arbitrary \code{DirectSum}, and composite axes
-must report unsupported input.
+\paragraph{Weekly milestones.}
+Week 1: deterministic rank factorization; verify $T=BC$ and ranks on
+rectangular, deficient, and zero matrices.
+Week 2: cores, contraction, and updates; compare Bell/GHZ and inverse circuits
+with the oracle after every gate.
+Week 3: gate interface, adjacent SWAPs, environment squared norms, random
+circuits, and errors. Week 4: experiments, report, and demonstration.
 
-\begin{center}
-\small
-\begin{tabularx}{\linewidth}{@{}p{10mm}YY@{}}
-\toprule
-Week & Work & Demonstrable result\\
-\midrule
-1 & Understand the scalar API; implement exact rank factorization,
-including rectangular, rank-deficient, and zero matrices. &
-Tests verify $T=BC$, full factor rank, and deterministic pivot behavior.\\[4pt]
-2 & MPS cores, basis states, contraction, and one-/two-site updates.
-Compare amplitudes after every gate. &
-Bell and GHZ preparation and inverse circuits agree exactly with the
-statevector oracle.\\[4pt]
-3 & Gate-interface integration, adjacent SWAPs, environment contraction,
-and bounded randomized tests. &
-The supported fragment has explicit errors and exact differential tests;
-squared norms are computed without SVD assumptions.\\[4pt]
-4 & Reproducible experiments, code cleanup, report, and demonstration. &
-Explain measured costs using bonds, field degree, coefficient growth,
-and circuit structure.\\
-\bottomrule
-\end{tabularx}
-\end{center}
+\paragraph{Acceptance and deliverables.}
+Deliver code, tests, benchmarks, and a 6--10-page report. Up to eight qubits,
+check amplitudes, squared norms, and inverse round trips, including cancellation,
+non-dyadic angles, controlled phases, and SWAP ordering. Vary depth and
+denominators on product, GHZ, and shallow entangling circuits; report time,
+memory, bonds, degree, coefficient bits, and failures. No speedup is required.
+Local rank reduction is mandatory; global sweeps and routing are stretch work.
+General \code{QOp}, measurement, SVD, and approximation are excluded.
 
-\paragraph{Acceptance criteria and deliverables.}
-Deliver an integrated Haskell module, tests, benchmark driver, and a
-6--10-page report. On bounded circuits up to eight qubits, compare
-intermediate amplitudes, squared norms, and inverse round trips with the
-exact oracle. Cover entanglement creation/removal, rank deficiency,
-cancellation, non-dyadic angles, controlled phases, and SWAP ordering.
-
-Vary depth and denominators separately on product, GHZ, and shallow
-entangling circuits. Report time, available memory measurements, bonds,
-field degree, coefficient bits, and resource failures; no speedup is required.
-
-\paragraph{Scope control.}
-Require correct local rank reduction, not globally minimal bonds.
-General \code{QOp} semantics, measurement, SVD, approximation, and
-scalar-library development are excluded. Rank-compression sweeps or
-nonadjacent-gate routing are stretch work.
-
-\section{MSc thesis: exact tensor-network semantics and coefficient growth}
+\subsection{MSc thesis: exact tensor-network semantics and coefficient growth}
 \label{sec:msc}
-\paragraph{Research aim.}
-Study the cost of exact MPS/MPO evaluation. A matrix product operator
-(MPO) represents an operator by cores with input/output bits and two
-bond indices; contracting bonds reconstructs its matrix entries.
-Connect proved invariants to measured arithmetic behavior.
+\paragraph{Questions and required baseline.}
+Measure MPS/MPO time and memory savings, effects of pivot/compression policies,
+and usefulness for compiler validation. MPO cores have input/output bits and two bonds.
+Build a complete compositional \code{QOp} interpreter in one field, without
+dense fallback. Prove gauge, wire-order, and semantic invariants, including
+bidirectional sweeps that remove redundant block bases. Implement control
+and direct sum by MPO arithmetic or direct branching, using Section~\ref{sec:matrix};
+rotations use \eqref{eq:svrotation}. Addition concatenates or block-diagonalizes
+bonds before rank compression. Handle zero branches.
 
-\paragraph{Three research questions.}
-\begin{enumerate}
-\item When does MPS/MPO evaluation use less time or memory than exact
-statevector evaluation, and which representation choices determine this?
-\item Which pivot and compression policies control coefficient growth?
-Does smaller bond dimension imply faster exact evaluation?
-\item How do entanglement, denominators, and program structure constrain
-performance and usefulness as a compiler-validation oracle?
-\end{enumerate}
+\paragraph{Experimental scope.}
+Choose one comparison: first-nonzero versus coefficient-size pivots, or eager
+versus bond-triggered compression. A second comparison is stretch work.
+Local fields require separate promotion, contraction, and equality invariants;
+fraction-free and modular elimination are optional.
 
-\paragraph{Core technical work.}
-Define gauge and wire-order invariants. Exact representations already
-exist by closure and rank factorization; a complete compositional
-interpreter, proved against the dense semantics without dense fallback,
-is the engineering baseline. Use MPO arithmetic or direct branching;
-with $P_b=\ket b\langle b|$,
-\[
-\begin{aligned}
-\sem{\code{C}\ u}&=P_0\otimes I_{2^{n_u}}+P_1\otimes\sem u,\\
-\sem{\code{DirectSum}\ u\ t}&=P_0\otimes\sem u+P_1\otimes\sem t
-\quad(n_u=n_t).
-\end{aligned}
-\]
-Rotations use \eqref{eq:svrotation}. Exact MPS addition may concatenate or
-block-diagonalize bonds, followed by rank-based compression.
-Handle zero branches explicitly.
+\paragraph{Six-month milestones.}
+Month 1: literature, prototype, design. Months 2--3: baseline, sweep proofs,
+exact-agreement tests. Month 4: comparison and instrumentation. Month 5:
+experiments and rewrites. Month 6: thesis and reproducible release.
 
-Prove rank-revealing sweeps that remove redundant block bases in both
-directions; minimal-rank existence alone does not establish their correctness.
-Choose two comparisons: first-nonzero versus coefficient-size pivots;
-eager versus bond-size-triggered compression; common versus local fields.
-Fraction-free or modular elimination is optional.
+\paragraph{Evaluation.}
+Compare exact Matrix/Statevector, uncompressed MPS, and floating MPS.
+Vary bonds and degrees independently on product states, QFTs, Clifford+$T$,
+mixed-denominator circuits, and rewrite regressions. Publish seeds, limits,
+builds, results, and timeouts. Success requires correctness and explained costs;
+measurement and parallelism are excluded.
 
-\begin{center}
-\small
-\begin{tabularx}{\linewidth}{@{}p{21mm}Y@{}}
-\toprule
-Period & Milestone\\
-\midrule
-Month 1 & Literature review, reproduce the local prototype, define
-semantics and experiment protocol.\\
-Months 2--3 & General compositional evaluator and rank-sweep invariants;
-exact agreement tests; complete a baseline implementation.\\
-Month 4 & Implement the selected arithmetic/compression variants;
-instrument field operations, bonds, and coefficient sizes.\\
-Month 5 & Controlled experiments and compiler-rewrite case studies;
-explain successes and failures.\\
-Month 6 & Consolidate proofs and artifacts, write the thesis, and
-prepare a reproducible release and presentation.\\
-\bottomrule
-\end{tabularx}
-\end{center}
-
-\paragraph{Evaluation and success.}
-Use exact Matrix/Statevector as correctness oracles, uncompressed MPS as
-a compression baseline, and floating MPS for performance/accuracy comparison.
-Vary bonds and field degrees separately on product states, QFTs,
-Clifford+$T$, mixed-denominator circuits, and rewrite regressions.
-Publish seeds, limits, builds, results, and timeouts. Success means
-correctness and reproducible evidence explaining costs, without universal
-speedup. Measurement and parallel arithmetic are later extensions.
-
-\section{Student project: efficient cyclotomic arithmetic}
+\subsection{Four-week project: efficient cyclotomic arithmetic}
 \label{sec:scalarproject}
-An independent four-week project builds on the supplied prototype scalar
-module and evaluator clients: which storage and arithmetic choices reduce
-the cost of exact evaluation at a fixed mathematical result?
-
-Require two improvements: sparse reduced
-polynomials with a measured sparse/dense switching rule, and cached field
-contexts and embeddings. Preserve the scalar API, distinguished complex
-embedding, and exact equality, including inversion and general rational
-coefficients for rank factorization. Minimal-field discovery is not required.
-
-Week 1 instruments and tests the baseline; week 2 implements sparse
-arithmetic; week 3 adds caching and integrates both representations;
-week 4 evaluates and documents. Compare exact results against the prototype
-on bounded random values, roots of unity, cancellations, mixed-denominator
-circuits, and elimination traces. Include conjugation, inversion, promotion,
-and cross-field equality; Walck's library is a possible independent
-comparison \cite{walck}.
-
-Report setup and evaluation time, available peak-memory measurements,
-field degree, sparsity, coefficient bits, and resource failures.
-Deliver an integrated module, tests, benchmark driver, and short report.
-Use the measurements to motivate extensions such as local fields,
-certified descent, dyadic arithmetic, or faster multiplication.
-
-\section{Boundaries, related work, and the implementation decision}
-\label{sec:discussion}
-Cyclotomic arithmetic supports exact amplitudes, matrix entries, inner
-products, squared norms, and Born probabilities. It does not support
-arbitrary normalization or SVD. For example, the cyclotomic vector
-$(1,2+\sqrt2)$ has squared norm $7+4\sqrt2$, whose square root is not
-cyclotomic. Normalizing this vector would leave cyclotomic arithmetic;
-unitary evaluation avoids the issue by preserving the input norm.
-
-Measurement need not leave cyclotomic arithmetic: unnormalized
-projected vectors remain cyclotomic, with probabilities given by ratios
-of exact squared norms. For an outcome projector $P$ and density matrix
-$\rho$ with entries in the same cyclotomic field, conditioning gives
-$P\rho P^\dagger/\tr(P\rho P^\dagger)$ for a nonzero probability,
-which also stays in the field. Sampling requires ordering and randomness;
-these extensions are outside the prototype.
-
-\paragraph{Optional proof of the normalization boundary (Galois theory).}
-Put $F=\Q(\sqrt2)$, $a=7+4\sqrt2$, and $a'=7-4\sqrt2$.
-The field norm, the product of the two conjugates in $F$, gives
-$aa'=17$. Hence neither is a square in $F$: the norm of a square would
-be a rational square. For $\sqrt{a'}$ to lie in $F(\sqrt a)$,
-$a'/a=(a')^2/17$ would have to be a square in $F$, but $\sqrt{17}\notin F$.
-Thus $\Q(\sqrt a)=F(\sqrt a)$ lacks a conjugate of $\sqrt a$ and is not
-Galois. The criterion in Section~\ref{sec:mps} excludes $\sqrt a$ from
-the cyclotomics, and its reciprocal cannot be cyclotomic either.
-
-Cyclotomic field theory \cite{milne} and Walck's library \cite{walck}
-provide foundations and comparison. Exact Clifford+$T$ synthesis also
-uses the dyadic cyclotomic ring \cite{giles}; here the task is evaluation.
-MPS, tensor trains, and MPO arithmetic provide established constructions
-\cite{schollwock,oseledets,hubig}. The student projects investigate their
-exact cyclotomic costs in QPP, using the prototype as a reference.
+Preserve the scalar API. Week 1: tests and instrumentation; week 2: sparse
+polynomials; week 3: sparse/dense switching and cached fields/embeddings;
+week 4: evaluation and report. Exclude minimal-field discovery.
+Deliver code, tests, benchmarks, and a report. Compare arithmetic, conjugation,
+inversion, promotion, equality, and ordering against the prototype and, where
+supported, Walck \cite{walck}. Test random values, cancellation, circuits, and
+elimination; report time, memory, degree, sparsity, coefficient bits, and failures.
 
 \begin{thebibliography}{9}
-\small
-\setlength{\itemsep}{3pt}
+\enlargethispage{12pt}
+\footnotesize
+\setlength{\itemsep}{0pt}
+\setlength{\parsep}{0pt}
+\setlength{\parskip}{0pt}
 \bibitem{milne}
-J.~S. Milne.
-\emph{Fields and Galois Theory}, version 5.10, 2022.
-Sections on Galois correspondence and cyclotomic extensions.
-\url{https://www.jmilne.org/math/CourseNotes/FT.pdf}.
+J.~S. Milne. \href{https://www.jmilne.org/math/CourseNotes/FT.pdf}
+{\emph{Fields and Galois Theory}}, version 5.10, 2022.
 
 \bibitem{walck}
-S.~N. Walck.
-\emph{cyclotomic: A subfield of the complex numbers for exact calculation},
-Haskell package, version 1.1.2, 2023.
-\url{https://hackage.haskell.org/package/cyclotomic-1.1.2}.
+S.~N. Walck. \href{https://hackage.haskell.org/package/cyclotomic-1.1.2}
+{\emph{cyclotomic: A subfield of the complex numbers for exact calculation}},
+Haskell package 1.1.2, 2023.
 
 \bibitem{base}
-GHC libraries.
-\emph{Data.Complex}, \code{base-4.21.0.0} documentation.
-\url{https://hackage.haskell.org/package/base-4.21.0.0/docs/Data-Complex.html}.
+GHC libraries. \href{https://hackage.haskell.org/package/base-4.21.0.0/docs/Data-Complex.html}
+{\emph{Data.Complex}}, \code{base-4.21.0.0} documentation.
 
 \bibitem{giles}
-B. Giles and P. Selinger.
-Exact synthesis of multiqubit Clifford+$T$ circuits.
+B. Giles and P. Selinger. \href{https://doi.org/10.1103/PhysRevA.87.032332}
+{Exact synthesis of multiqubit Clifford+$T$ circuits}.
 \emph{Physical Review A} 87, 032332, 2013.
-\url{https://doi.org/10.1103/PhysRevA.87.032332}.
 
 \bibitem{schollwock}
-U. Schollw\"ock.
-The density-matrix renormalization group in the age of matrix product states.
+U. Schollw\"ock. \href{https://doi.org/10.1016/j.aop.2010.09.012}
+{The density-matrix renormalization group in the age of matrix product states}.
 \emph{Annals of Physics} 326, 96--192, 2011.
-\url{https://doi.org/10.1016/j.aop.2010.09.012}.
 
 \bibitem{oseledets}
-I.~V. Oseledets.
-Tensor-train decomposition.
+I.~V. Oseledets. \href{https://doi.org/10.1137/090752286}{Tensor-train decomposition}.
 \emph{SIAM Journal on Scientific Computing} 33(5), 2295--2317, 2011.
-\url{https://doi.org/10.1137/090752286}.
 
 \bibitem{hubig}
 C. Hubig, I.~P. McCulloch, and U. Schollw\"ock.
-Generic construction of efficient matrix product operators.
+\href{https://doi.org/10.1103/PhysRevB.95.035129}
+{Generic construction of efficient matrix product operators}.
 \emph{Physical Review B} 95, 035129, 2017.
-\url{https://doi.org/10.1103/PhysRevB.95.035129}.
 \end{thebibliography}
 \end{document}

@@ -1,0 +1,533 @@
+% Build from the repository root:
+% latexmk -pdf -interaction=nonstopmode -halt-on-error \
+%   -outdir=tmp/pdfs/qop-unitarity paper/qop-unitarity.tex
+\documentclass[11pt,a4paper]{article}
+\usepackage[hmargin=23mm,vmargin=22mm,headheight=14pt,headsep=7mm,footskip=11mm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amsthm}
+\usepackage{newtxtext,newtxmath}
+\usepackage{microtype}
+\usepackage{booktabs,tabularx,array}
+\usepackage{enumitem}
+\usepackage{xcolor,listings,fancyhdr}
+\usepackage{hyperref}
+\definecolor{ink}{HTML}{173A54}
+\definecolor{codebg}{HTML}{F3F5F7}
+\hypersetup{colorlinks=true,linkcolor=ink,citecolor=ink,urlcolor=ink,
+  pdftitle={Soundness and Expressive Completeness of QOp},
+  pdfsubject={Unitary semantics, conservative type checking, and rational angles}}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Soundness and expressive completeness of QOp}
+\fancyhead[R]{\small QPP / HQP}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt plus 1pt}
+\setlength{\emergencystretch}{2em}
+\setlist{nosep,leftmargin=1.5em}
+\lstset{language=Haskell,basicstyle=\small\ttfamily,
+  backgroundcolor=\color{codebg},frame=single,rulecolor=\color{black!15},
+  framerule=0.3pt,framesep=5pt,columns=fullflexible,
+  keepspaces=true,showstringspaces=false,breaklines=true,
+  aboveskip=7pt,belowskip=7pt}
+\newcommand{\C}{\mathbb C}
+\newcommand{\R}{\mathbb R}
+\newcommand{\Q}{\mathbb Q}
+\newcommand{\U}{\mathrm U}
+\newcommand{\sem}[1]{\llbracket #1\rrbracket}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\checked}[2]{#1\mathbin{:}\mathsf{QOp}(#2)}
+\newcommand{\opnorm}[1]{\left\lVert #1\right\rVert_{\mathrm{op}}}
+\newcommand{\rot}[2]{R_{#1}(#2)}
+\DeclareMathOperator{\diag}{diag}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+
+\begin{document}
+\begin{center}
+{\LARGE\bfseries Soundness and Expressive\\[3pt] Completeness of QOp}\\[8pt]
+{\large Hybrid Quantum Programming}\\[7pt]
+{\small Course note \quad$\cdot$\quad QPP \quad$\cdot$\quad 18 October 2026}
+\end{center}
+
+\begin{abstract}
+\noindent QOp is the language of unitary operators used in QPP. Its type
+checker verifies dimensions and proves the Hermiticity conditions needed
+for rotations, without constructing operator matrices. This note develops
+the connection between these checks and the mathematical semantics of
+quantum circuits. Accepted expressions denote unitary operators. With
+real angle parameters the language can express every qubit unitary;
+with its implemented rational parameters it can approximate every such
+unitary arbitrarily closely. The proofs distinguish the expressive power
+of the language from the ability of the checker to recognize valid
+expressions.
+\end{abstract}
+
+\section{Operators, expressions, and types}
+
+A quantum circuit on $n$ qubits acts on the state space
+$\mathcal H_n=(\C^2)^{\otimes n}\cong\C^{2^n}$. Its reversible
+evolution is described by a \emph{unitary} matrix $U$, satisfying
+$U^\dagger U=UU^\dagger=I$, where $\dagger$ denotes conjugate transpose.
+Unitarity preserves inner products and hence the norm of every state.
+Write $\U(2^n)$ for the group of these matrices.
+
+In QPP, a value of the Haskell datatype \code{QOp} is a finite syntax
+tree describing an operator. It is distinct from the matrix that the
+expression denotes. For example, \code{Compose X X} and \code{Id 1}
+are different expressions with the same matrix denotation. Merely
+constructing a \code{QOp} value does not establish its validity:
+\code{Compose X (Id 2)} attempts to compose operators of different
+dimensions.
+
+The function \code{typeCheck} checks this syntax. We write
+\[
+  \checked a n
+  \quad\text{when}\quad
+  \code{typeCheck a = Right n},
+\]
+and use $\sem a$ for the exact matrix denotation of $a$ on $\mathcal H_n$.
+Thus $n$ is the number of qubits, or \emph{width}, rather than the matrix
+dimension. Throughout, widths are nonnegative and must fit in the
+implementation's \code{Nat}, an alias for \code{Int}; the same condition
+applies to intermediate width sums. The zero-qubit space is
+$\mathcal H_0=\C$, so its operators are $1\times1$ matrices.
+
+This note concerns the \code{QOp} fragment of QPP. Measurement and
+initialization belong to the surrounding \code{Program} language and
+are not unitary operations.
+
+\subsection{Matrix semantics}
+
+Composition follows mathematical order: \code{Compose a b} applies
+$b$ first and denotes $\sem a\,\sem b$. Tensor product combines two
+registers, while direct sum selects between two equal-sized blocks:
+\[
+  \sem{\code{Tensor}\;a\;b}=\sem a\otimes\sem b,
+  \qquad
+  \sem{\code{DirectSum}\;a\;b}
+    =\begin{pmatrix}\sem a&0\\0&\sem b\end{pmatrix}.
+\]
+The direct sum has one more qubit than either block; the leading qubit
+selects the first block when it is $0$ and the second when it is $1$.
+
+Angles are measured in units of $\pi$. In particular,
+\begin{equation}
+  \sem{\code{Phase}\;q}=[e^{i\pi q}],
+  \qquad
+  \sem{\code{R}\;a\;q}=\rot A q:=e^{-i\pi qA/2},
+  \quad A=\sem a.
+  \label{eq:rotation}
+\end{equation}
+The half angle is part of the rotation convention. Both parameters
+have Haskell type \code{Rational}. A phase has width zero, and
+\code{Tensor (Phase q) a} denotes $e^{i\pi q}\sem a$ without adding
+any qubits. Global phase is retained in the semantics: equality means
+equality of matrices, rather than equality up to a scalar phase.
+
+For the primitive gates, use the same letter in mathematical type for
+the matrix and in typewriter type for its syntax; for example,
+$X=\sem{\code{X}}$. The matrices are
+\[
+  X=\begin{pmatrix}0&1\\1&0\end{pmatrix},\quad
+  Y=\begin{pmatrix}0&-i\\i&0\end{pmatrix},\quad
+  Z=\begin{pmatrix}1&0\\0&-1\end{pmatrix},\quad
+  H=\frac1{\sqrt2}\begin{pmatrix}1&1\\1&-1\end{pmatrix},
+\]
+and $\mathrm{SX}=\tfrac12\bigl((1+i)I+(1-i)X\bigr)$.
+All five are unitary. The first four are also \emph{Hermitian}, meaning
+$A^\dagger=A$; $\mathrm{SX}$ is not Hermitian, but satisfies
+$\mathrm{SX}^2=X$.
+
+The following table gives the constructor rules. All children must pass
+the checker. In the table, $A=\sem a$ and
+$B=\sem b$. A unary child has width $n$; binary children have widths
+$m$ and $n$, respectively.
+\begin{center}
+\small
+\begin{tabularx}{\linewidth}{@{}lclL@{}}
+\toprule
+Expression & Width & Denotation & Additional condition\\
+\midrule
+\code{Id n} & $n$ & $I_{2^n}$ & $n\geq0$.\\
+\code{Phase q} & $0$ & $[e^{i\pi q}]$ & $q\in\Q$.\\
+\code{X, Y, Z, H, SX} & $1$ & Matrices above & None.\\
+\code{R a q} & $n$ & $e^{-i\pi qA/2}$ & If $q\ne0$, prove $A^\dagger=A$.\\
+\code{C a} & $n+1$ & $I_{2^n}\oplus A$ & None.\\
+\code{Permute ks} & $|\code{ks}|$ & Wire permutation & $\code{ks}$ permutes $0,\ldots,|\code{ks}|-1$.\\
+\code{Tensor a b} & $m+n$ & $A\otimes B$ & None.\\
+\code{DirectSum a b} & $n+1$ & $A\oplus B$ & $m=n$.\\
+\code{Compose a b} & $n$ & $AB$ & $m=n$.\\
+\code{Adjoint a} & $n$ & $A^\dagger$ & None.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+For \code{Permute ks}, output wire $j$ takes input wire
+$\code{ks}[j]$. The empty permutation is valid and denotes the
+zero-qubit identity.
+
+\subsection{Soundness and two notions of completeness}
+
+Three properties describe the relationship between a language and its checker:
+\begin{enumerate}
+\item \emph{Soundness:} every accepted expression denotes a unitary
+on its reported number of qubits.
+\item \emph{Expressive completeness:} every unitary has at least one
+accepted expression.
+\item \emph{Completeness of the checker:} every expression with a
+well-defined unitary denotation is accepted.
+\end{enumerate}
+The first is a correctness property of the checker. The second describes
+the expressive power of the accepted language and depends on the allowed
+angle parameters. The third describes how well the checker recognizes
+equivalent ways of expressing operators. QPP provides soundness, but its
+symbolic analysis is conservative: failure to prove a property need not
+mean that the property is false.
+
+\clearpage
+\section{Soundness and Hermiticity}
+
+Most constructor rules preserve unitarity directly. For instance, if
+$A$ and $B$ are unitary and have the same dimension, then
+$(AB)^\dagger AB=B^\dagger A^\dagger AB=I$.
+Tensor products, direct sums, and adjoints have corresponding closure
+properties. Rotation is the constructor that needs an additional premise.
+
+\subsection{The rotation premise}
+
+For real $q$, a Hermitian axis $A$ gives a unitary exponential:
+\begin{equation}
+  \rot Aq^\dagger\rot Aq
+    =e^{i\pi qA/2}e^{-i\pi qA/2}=I.
+  \label{eq:rotation-unitary}
+\end{equation}
+An arbitrary unitary axis does not suffice. For example, $XY=iZ$ is
+unitary but not Hermitian, and
+\[
+  e^{-i\pi q(XY)/2}=e^{\pi qZ/2}
+    =\diag(e^{\pi q/2},e^{-\pi q/2})
+\]
+is not unitary when $q\ne0$. Consequently, the checker accepts
+\code{Compose X Y} as an operator but rejects it as the axis of a
+nonzero rotation.
+
+An accepted rotation axis is itself a checked operator. When the angle
+is nonzero, the axis is therefore both unitary and Hermitian, so
+$A^2=A^\dagger A=I$. In the exponential series, the even powers
+$A^{2k}=I$ give a cosine term and the odd powers $A^{2k+1}=A$ give
+a sine term. Consequently,
+\begin{equation}
+  \rot Aq=\cos(\pi q/2)I-i\sin(\pi q/2)A.
+  \label{eq:involution-rotation}
+\end{equation}
+This identity also explains why rotations about checked axes can be
+evaluated without a general matrix-exponential algorithm.
+
+At $q=0$, the exponential is $I$ for any square matrix $A$. QPP therefore
+omits the Hermiticity premise at zero angle, but still checks the entire
+axis expression. A zero angle cannot conceal a dimension mismatch or
+another invalid subterm.
+
+\subsection{Symbolic evidence and the soundness theorem}
+
+The checker proves Hermiticity by symbolic algebra, without expanding
+the operator into a matrix. Besides the width, it may infer an exact
+Pauli form $A=e^{i\pi s}P$, where $P$ is a tensor product of $I,X,Y,Z$,
+or an \emph{adjoint-phase} relation
+\begin{equation}
+  A^\dagger=e^{i\pi p}A.
+  \label{eq:adjoint-phase}
+\end{equation}
+The phases $s$ and $p$ are reduced modulo $2$. Since $P^\dagger=P$,
+an exact Pauli form implies $p=-2s\pmod2$. A proved phase $p=0$
+establishes Hermiticity; an unknown phase supplies no such proof.
+For example, $H$ has adjoint phase $0$ although it is not a phase times
+a Pauli string.
+
+The soundness proof maintains two invariants together: the denotation
+of each accepted subterm is unitary, and every fact inferred about that
+subterm is correct. Appendix~\ref{sec:evidence} verifies the algebraic
+rules used for the second invariant.
+
+\begin{theorem}[Soundness]
+Every accepted finite expression denotes a unitary on its reported
+number of qubits: $\checked a n$ implies $\sem a\in\U(2^n)$.
+\label{thm:soundness}
+\end{theorem}
+\begin{proof}
+Proceed by structural induction on the expression, maintaining both
+invariants above.
+Identities, scalar phases, and the five primitive one-qubit gates are
+unitary. A valid wire permutation is a bijection of the computational
+basis, hence a unitary permutation matrix.
+
+Products, tensor products, direct sums, and adjoints preserve
+unitarity. The width restrictions ensure the stated power-of-two
+dimensions. Control is the special case $I\oplus A$ of direct sum.
+
+For \code{R a q}, the induction hypothesis validates the child's
+evidence. If $q\ne0$, its accepted phase proof gives $A^\dagger=A$,
+so~\eqref{eq:rotation-unitary} proves unitarity. If $q=0$, the
+denotation is $I$ without a Hermiticity premise.
+In each case, Lemma~\ref{lem:evidence} establishes correctness of the
+parent's evidence, completing the simultaneous induction.
+\end{proof}
+
+\clearpage
+\section{Expressive completeness with real parameters}
+
+Expressive power depends on which numbers may occur as parameters.
+First consider an idealized version of QOp in which \code{Phase} and
+\code{R} admit real parameters. The width restrictions and the requirement
+of a Hermitian axis for every nonzero rotation remain the same.
+This mathematical language isolates the role of the constructors from
+the representation of numbers in Haskell. The construction below uses
+only the primitive axes \code{Y} and \code{Z}, whose Hermiticity is
+independent of the parameter values.
+
+\begin{theorem}[Exact expressive completeness]
+With arbitrary real parameters, every $U\in\U(2^n)$ has a finite
+expression satisfying the checker's restrictions and denoting $U$.
+No ancillary qubits are required, and global phase is preserved.
+\label{thm:complete}
+\end{theorem}
+\begin{proof}
+For $n=0$, any unitary is a scalar $[e^{i\pi p}]$, represented by
+\code{Phase p}. For one qubit, Euler decomposition expresses any
+unitary as a scalar phase and three rotations:
+\begin{equation}
+  U=e^{i\pi p}\rot Z\alpha\rot Y\beta\rot Z\gamma,
+  \qquad p,\alpha,\beta,\gamma\in\R.
+  \label{eq:euler}
+\end{equation}
+The corresponding expression is
+\begin{lstlisting}
+Tensor (Phase p)
+  (Compose (R Z alpha) (Compose (R Y beta) (R Z gamma)))
+\end{lstlisting}
+Every rotation axis is a primitive Pauli operator and therefore has
+an immediate Hermiticity proof. The phase is a scalar, so the
+expression has width one.
+
+For $n\geq2$, arbitrary one-qubit unitaries and CNOT exactly generate
+every $n$-qubit unitary by a finite circuit~\cite{barenco}.
+The term \code{C X} supplies CNOT. Tensoring with identities embeds
+one-qubit gates in any wire position. To apply CNOT to any ordered
+pair of distinct wires, choose a wire permutation $P$ placing that
+pair first and use
+\[
+  P^\dagger\bigl(\mathrm{CNOT}\otimes I_{2^{n-2}}\bigr)P.
+\]
+Both $P$ and $P^\dagger$ are represented by valid wire permutations.
+All resulting gates have width $n$, so their composition is accepted.
+Replacing each one-qubit gate by~\eqref{eq:euler} completes the
+construction. Scalar phases in these decompositions are retained.
+\end{proof}
+
+This proof uses only identities, phases, rotations about $Y$ and $Z$,
+\code{C X}, tensor products, composition, and wire permutations.
+General rotation axes and the more sophisticated Hermiticity rules
+make expressions more convenient; universality does not depend on them.
+The theorem asserts existence of a finite expression, not a bound
+polynomial in the number of qubits.
+
+\subsection{Expressiveness and conservative checking}
+
+The proof constructs an accepted expression for each operator. It does
+not assert that every other expression for that operator is accepted.
+This distinction permits a simple, conservative analysis to coexist
+with an expressive language.
+
+For example, let
+\[
+  a=\code{Compose (Tensor H H) (Tensor Y Y)}.
+\]
+Since $HY=-YH$, the two signs cancel in the tensor product:
+\[
+  (H\otimes H)(Y\otimes Y)
+    =(HY)\otimes(HY)
+    =(-YH)\otimes(-YH)
+    =(Y\otimes Y)(H\otimes H).
+\]
+Thus the two factors commute. Both are Hermitian, so $\sem a$ is
+Hermitian too. The current analysis does not establish this commutation
+relation and rejects
+\code{R a (1/3)}, although that expression denotes a unitary.
+Theorem~\ref{thm:complete} nevertheless supplies an accepted
+representation of the same operator in the real-parameter language.
+
+\clearpage
+\section{Rational parameters and approximation}
+
+Return to the implemented language, where phases and angles use
+Haskell's \code{Rational}. This type has arbitrary precision; the
+restriction is to rational multiples of $\pi$, rather than to a
+fixed number of bits.
+Let
+\[
+  \mathcal D_n^{\Q}=\{\sem a\mid\checked a n
+    \text{ in the rational-parameter language}\}
+\]
+be the set of matrices denoted by its accepted $n$-qubit expressions.
+
+\begin{proposition}[Failure of exact completeness over the rationals]
+For each fixed $n$, $\mathcal D_n^{\Q}$ is a proper subset of $\U(2^n)$.
+\end{proposition}
+\begin{proof}
+There are only countably many finite expressions with integer and
+rational parameters. Thus $\mathcal D_n^{\Q}$ is countable, whereas
+$\U(2^n)$ is uncountable, including for $n=0$.
+\end{proof}
+
+Countability does not prevent arbitrarily accurate approximation.
+To measure the error, use the operator norm
+\[
+  \opnorm M=\sup_{\|v\|_2=1}\|Mv\|_2.
+\]
+An operator-norm bound therefore controls the error on every normalized
+input state, rather than on a single chosen input.
+
+\begin{theorem}[Approximate expressive completeness]
+For every $U\in\U(2^n)$ and every $\varepsilon>0$, there is an
+accepted expression $a$ with rational parameters such that
+\[
+  \opnorm{\sem a-U}<\varepsilon.
+\]
+In particular, $\overline{\mathcal D_n^{\Q}}=\U(2^n)$ in operator norm.
+\label{thm:density}
+\end{theorem}
+\begin{proof}
+Use the finite circuit supplied by Theorem~\ref{thm:complete}, with
+all one-qubit gates expanded as in~\eqref{eq:euler}. Its variable
+parameters occur only in scalar phases and rotations about $Y$ or $Z$.
+Replace them by sufficiently close rational numbers. The resulting
+expression still passes the implemented checker, since none of the
+required axis proofs depends on the parameter values.
+
+For either Pauli axis $P\in\{Y,Z\}$, diagonalization with eigenvalues
+$\pm1$, together with $|e^{ix}-e^{iy}|\leq|x-y|$, gives
+\begin{align}
+  \opnorm{\rot Pt-\rot Ps}&\leq\frac{\pi}{2}|t-s|,\label{eq:rot-bound}\\
+  |e^{i\pi p}-e^{i\pi r}|&\leq\pi|p-r|.\label{eq:phase-bound}
+\end{align}
+Tensoring with identities and conjugating by wire permutations
+preserve these norm differences. For products of unitary gates,
+a telescoping expansion replaces one factor at a time. Since every
+remaining factor has operator norm $1$, it gives
+\begin{equation}
+  \opnorm{U_m\cdots U_1-V_m\cdots V_1}
+  \leq\sum_{j=1}^m\opnorm{U_j-V_j}.
+  \label{eq:telescoping}
+\end{equation}
+There are finitely many parameters, so density of $\Q$ in $\R$
+lets us make the sum smaller than $\varepsilon$.
+Every approximating expression is exactly unitary by
+Theorem~\ref{thm:soundness}. Since the unitary group is closed,
+the asserted equality of closures follows.
+\end{proof}
+
+There are two separate errors to consider in an implementation.
+Replacing real angles by rational ones selects a nearby unitary; the
+resulting expression still denotes an exactly unitary matrix. A numerical
+backend may then introduce additional error while evaluating that
+expression. In particular, independently rounded matrix entries need
+not satisfy $U^\dagger U=I$ exactly.
+Type checking also places no bound on evaluation cost: an accepted
+expression may exceed a backend's memory or arithmetic limits.
+
+\clearpage
+\appendix
+\section{Preservation of symbolic evidence}
+\label{sec:evidence}
+
+The datatype and structural operations are defined in \code{QPP.Syntax}.
+This appendix connects the symbolic analysis in \code{QPP.TypeCheck}
+to the evidence invariant used in Theorem~\ref{thm:soundness}.
+The helper module \code{QPP.TypeCheck.Pauli} implements arithmetic on
+Pauli strings and their phases.
+
+\begin{lemma}[Preservation of evidence]
+Suppose the children are unitary with correct evidence, and the
+parent's typing conditions hold. The analysis rules then infer only
+correct exact Pauli forms and adjoint-phase facts for the parent.
+\label{lem:evidence}
+\end{lemma}
+\begin{proof}
+The rules fall into four groups.
+
+\emph{Pauli forms.}
+Leaf evidence follows from the primitive matrices. Exact Pauli
+multiplication uses $XY=iZ$, $YZ=iX$, $ZX=iY$, their reversed
+products, and $X^2=Y^2=Z^2=I$. Tensor products and adjoints preserve
+Pauli form. Equal or opposite blocks satisfy
+$A\oplus A=I\otimes A$ and $A\oplus(-A)=Z\otimes A$.
+These identities justify the rules that retain an exact Pauli form.
+
+\emph{Adjoint phases.}
+Suppose $A^\dagger=e^{i\pi p}A$ and $B^\dagger=e^{i\pi r}B$.
+Tensor products add the phases, adjoints negate them, and a direct
+sum inherits a phase when both blocks have that same phase.
+For composition, when $BA=e^{i\pi w}AB$,
+\begin{equation}
+  (AB)^\dagger=e^{i\pi(p+r)}BA
+             =e^{i\pi(p+r+w)}AB.
+  \label{eq:composition-phase}
+\end{equation}
+The checker proves this commutation relation from Pauli commutation,
+identical or scalar operands, or disjoint wire supports. A support is a
+set of wires outside which the operator acts as identity, apart from a
+possible scalar factor. The computed support may include unnecessary
+wires, but omits none that are required; thus disjoint computed supports
+suffice to prove commutation.
+
+\emph{Structural identities.}
+Cancellation uses $AA^\dagger=I$, and the special square rule uses
+$\mathrm{SX}^2=X$. A permutation that is its own inverse is Hermitian.
+On checked terms, the structural operation \code{dagger} denotes the
+adjoint, as follows by induction over its constructor equations. Matching
+a term against the structural adjoint of another therefore justifies
+cancellation. Unitary conjugation also preserves adjoint phase:
+\[
+  (UAU^\dagger)^\dagger=e^{i\pi p}UAU^\dagger.
+\]
+For the reflection rule, suppose $AK=-KA$ and $K$ is Hermitian. Then
+$A\rot Kq A^\dagger=\rot Kq^\dagger$. Writing $B=\rot Kq$, this implies
+$AB=B^\dagger A$ and $BA=AB^\dagger$, hence
+\[
+  (AB)^\dagger=e^{i\pi p}B^\dagger A=e^{i\pi p}AB,
+  \qquad
+  (BA)^\dagger=e^{i\pi p}AB^\dagger=e^{i\pi p}BA.
+\]
+Both products inherit $A$'s adjoint phase. At zero angle, $B=I$ and
+the conclusion holds without requiring $K$ Hermitian.
+
+\emph{Rotations.}
+For a nonzero-angle rotation, the typing premise and the child's
+correct evidence establish that the axis is unitary and Hermitian.
+Equation~\eqref{eq:involution-rotation} therefore applies.
+Even integral $q$ gives $\rot Aq=(-1)^{q/2}I$; odd integral $q$ gives
+$\rot Aq=e^{-i\pi q/2}A$, with adjoint phase $1$ modulo $2$.
+For a scalar axis $A=\pm I$, the result is the scalar
+$e^{\mp i\pi q/2}I$ for every angle. These are exactly the scalar,
+Pauli, and integral-angle phase facts used by the rotation rules.
+
+Rotations about the same axis fuse according to
+$\rot At\rot Au=\rot A{t+u}$. If the common axis lacks a
+Hermiticity proof, both accepted angles are zero, so fusion still
+gives the identity. A zero-angle rotation always yields the exact
+identity, independently of its axis's evidence.
+\end{proof}
+
+\begin{thebibliography}{9}
+\bibitem{barenco}
+A.~Barenco, C.~H.~Bennett, R.~Cleve, D.~P.~DiVincenzo,
+N.~Margolus, P.~Shor, T.~Sleator, J.~A.~Smolin, and H.~Weinfurter.
+\newblock Elementary gates for quantum computation.
+\newblock \emph{Physical Review A}, 52(5):3457--3467, 1995.
+\newblock \href{https://doi.org/10.1103/PhysRevA.52.3457}{doi:10.1103/PhysRevA.52.3457}.
+\newblock \href{https://arxiv.org/abs/quant-ph/9503016}{arXiv:quant-ph/9503016}.
+\end{thebibliography}
+\end{document}

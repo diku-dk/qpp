@@ -1,0 +1,1287 @@
+% Build from the repository root:
+% latexmk -pdf -interaction=nonstopmode -halt-on-error \
+%   -outdir=tmp/pdfs/uop-algebra paper/uop-algebra.tex
+% The Haskell listings form one module when preceded by:
+% module UOpExamples where
+% import Control.Applicative ((<|>))
+% import Data.List (sortOn, transpose)
+% import Data.Maybe (fromMaybe)
+% import Numeric.Natural (Natural)
+\documentclass[11pt,a4paper]{article}
+\usepackage[hmargin=23mm,vmargin=22mm,headheight=14pt,headsep=7mm,footskip=11mm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amsthm}
+\usepackage{newtxtext,newtxmath}
+\usepackage{microtype}
+\usepackage{booktabs,tabularx,array}
+\usepackage{enumitem,needspace,etoolbox}
+\usepackage{xcolor,listings,fancyhdr}
+\usepackage{hyperref}
+\definecolor{ink}{HTML}{173A54}
+\definecolor{codebg}{HTML}{F3F5F7}
+\hypersetup{colorlinks=true,linkcolor=ink,citecolor=ink,urlcolor=ink,
+  pdftitle={Algebra and Rewriting for UOp},
+  pdfsubject={Matrix identities and simple Haskell rewrites for a list-based unitary IR}}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Algebra and rewriting for UOp}
+\fancyhead[R]{\small QPP / HQP}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt plus 1pt}
+\setlength{\emergencystretch}{2em}
+\setlist{nosep,leftmargin=1.5em}
+\lstset{language=Haskell,basicstyle=\small\ttfamily,
+  backgroundcolor=\color{codebg},frame=single,rulecolor=\color{black!15},
+  framerule=0.3pt,framesep=5pt,columns=fullflexible,
+  keepspaces=true,showstringspaces=false,breaklines=true,
+  aboveskip=7pt,belowskip=7pt}
+\BeforeBeginEnvironment{lstlisting}{\par\noindent\begin{minipage}{\linewidth}}
+\AfterEndEnvironment{lstlisting}{\end{minipage}\par}
+\AddToHook{cmd/section/before}{\Needspace{8\baselineskip}}
+\newcommand{\C}{\mathbb C}
+\newcommand{\N}{\mathbb N}
+\newcommand{\Q}{\mathbb Q}
+\newcommand{\sem}[1]{\llbracket #1\rrbracket}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\Id}{I}
+\newcommand{\Rot}[2]{R_{#1}(#2)}
+\newcommand{\Ph}[1]{\phi(#1)}
+\newcommand{\ds}{\boldsymbol d}
+\DeclareMathOperator{\diag}{diag}
+\newtheorem{proposition}{Proposition}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+
+\begin{document}
+\begin{center}
+{\LARGE\bfseries Algebra and Rewriting for UOp}\\[8pt]
+{\large Equational laws, rewrite patterns, and transformation strategies}\\[7pt]
+{\small QPP / HQP \quad$\cdot$\quad 17 October 2026}
+\end{center}
+
+\begin{abstract}
+\noindent Flattened operand lists expose algebraic rewrites as maps,
+guarded zips, identity-padded transposes, adjacent-pair scans, and list
+splits. This note derives their exact, phase-preserving identities and
+gives a small Haskell implementation. Permutations account for basis
+order; strategies choose rule direction, traversal, and growth limits.
+A QFT example shows how lifting compositions produces parallel layers
+while increasing the number of identity nodes. All transformations
+operate symbolically.
+\end{abstract}
+
+\section{Syntax, semantics, and QOp lowering}
+
+A well-formed UOp denotes a unitary endomorphism of $\C^d$, for any $d\in\N$,
+including $d=0$. Dimensions count basis vectors, not qubits. The space
+$\C^0=\{0\}$ has a unique endomorphism, the unitary $I_0$.
+The current core is:
+
+\begin{lstlisting}
+type Dim = Natural
+type Permutation = [Int]
+
+data UOp
+  = R UOp Rational
+  | Tensor [UOp]
+  | DirectSum [UOp]
+  | Compose Dim [UOp]
+  | PermuteTensor [Dim] Permutation
+  | PermuteSum [Dim] Permutation
+  deriving (Show, Eq)
+\end{lstlisting}
+
+\code{Natural} is unbounded. A permutation must contain each index
+$0,\ldots,k-1$ exactly once, where $k$ is the length of its dimension
+list. Its convention is \emph{output position $j$ selects input position
+$p_j$}. Dimensions are needed because the same index permutation can
+denote different matrices for different block sizes.
+
+Write $A=\sem a$ and $d(a)=\dim A$. We write $a\equiv b$ when the
+terms have the same dimension and the same matrix denotation, including
+global phase. Composition is in mathematical order:
+\code{Compose d [a,b]} denotes $AB$, applying $b$ first.
+Every operand of \code{Compose d xs} must have dimension $d$.
+The dimension annotation also determines the empty composition.
+
+The rotation uses the same sign and half-angle convention as QOp:
+\[
+  \Rot A t:=e^{-i\pi tA/2},\qquad
+  \sem{\code{R }a\ t}=\Rot A t,\qquad t\in\Q.
+\]
+For $t\ne0$, its already-unitary axis must be proved Hermitian.
+At $t=0$, the axis must still be a valid UOp but need not be Hermitian.
+Thus a nonzero-angle axis satisfies $A^2=I$.
+Lowering QOp's \code{R a t} keeps the angle $t$ unchanged and recursively
+lowers its axis. These are semantic well-formedness conditions; the raw
+Haskell datatype does not enforce them.
+
+\clearpage
+\subsection{Deriving QOp constructs from UOp}
+\label{sec:qop-lowering}
+
+The following are semantic identities, including global phases. Write
+$\widehat a$ for the recursively translated QOp $a$, and
+$d=\dim\widehat a$. All source terms are assumed well formed.
+In the right column, $I_d$ denotes the identity on $\C^d$,
+$\Ph q$ abbreviates the scalar phase, and $x,z$ abbreviate the UOp
+expressions defined in their rows. Infix $\otimes$ and $\circ$ stand
+for \code{Tensor [a,b]} and \code{Compose d [a,b]}, respectively;
+$R_a(t)$ stands for \code{R a t}.
+
+\begin{center}
+\begingroup
+\renewcommand{\arraystretch}{1.18}
+\begin{tabularx}{\linewidth}{@{}lL@{}}
+\toprule
+Identity or QOp construct & Equivalent UOp expression\\
+\midrule
+$I_0$ & \code{Compose 0 []} $\equiv$ \code{DirectSum []}\\
+$I_1$ & \code{Compose 1 []} $\equiv$ \code{Tensor []}\\
+$I_2$ & \code{Compose 2 []} $\equiv$ $\code{DirectSum }[I_1,I_1]$\\
+$I_d$ & \code{Compose d []}\\
+\midrule
+\code{Id n} & $\code{Compose }(2^n)\,[]\equiv I_{2^n}$\\
+\code{Phase q} & $\Ph q:=\code{R }I_1\,(-2q)$\\
+\code{X} & $x:=\code{PermuteSum }[1,1]\,[1,0]$\\
+\code{Z} & $z:=\code{DirectSum }[I_1,\Ph1]$\\
+\code{Y} & $\Ph{1/2}\otimes(x\circ z)$\\
+\code{H} & $\Ph{1/2}\otimes
+  \bigl(R_z(1/2)\circ R_x(1/2)\circ R_z(1/2)\bigr)$\\
+\code{SX} & $\Ph{1/4}\otimes R_x(1/2)$\\
+\code{R a t} & $\code{R }\widehat a\ t$\\
+\code{C a} & $\code{DirectSum }[I_d,\widehat a]$\\
+\code{Permute p} & $\code{PermuteTensor }(\code{replicate }|p|\ 2)\ p$\\
+\code{Tensor a b} & $\code{Tensor }[\widehat a,\widehat b]$\\
+\code{DirectSum a b} & $\code{DirectSum }[\widehat a,\widehat b]$\\
+\code{Compose a b} & $\code{Compose }d\,[\widehat a,\widehat b]$\\
+\code{Adjoint a} & $\widehat a^{\dagger}$ (structural adjoint; Section~\ref{sec:adjoints})\\
+\bottomrule
+\end{tabularx}
+\endgroup
+\end{center}
+
+\paragraph{Dimension versus qubit count.}
+QOp's \code{One = Id 0} translates to $I_1$, and
+\code{I = Id 1} translates to $I_2$. The zero-dimensional $I_0$ is a
+valid UOp but has no QOp counterpart. The preferred representation of
+\code{Id n}, also used by the implementation, is
+\code{Compose }$(2^n)$\code{ []}: one constructor with an empty operand
+list. Its syntax-tree size is constant; the dimension's binary encoding
+uses $n+1$ bits. The equivalent \code{Tensor }$(\code{replicate }n\ I_2)$
+uses $n$ factors and is useful when the qubit decomposition should be
+explicit. Neither representation enumerates $2^n$ scalar blocks.
+
+\paragraph{Phase and gate conventions.}
+The phase parameter must be $-2q$, since
+$e^{-i\pi(-2q)I_1/2}=e^{i\pi q}I_1$.
+The gate identities use $Y=iXZ$ and
+$R_Z(1/2)R_X(1/2)R_Z(1/2)=-iH$.
+The chosen square root is
+\[
+ \Ph{1/4}\otimes R_X(1/2)
+ =\frac{1+i}{2}I_2+\frac{1-i}{2}X,
+ \qquad (\mathrm{SX})^2=X.
+\]
+Thus the factors $\Ph{1/2}$ and $\Ph{1/4}$ are necessary for exact
+equality, particularly when a gate is placed inside a controlled block.
+The abbreviations and structural adjoint add no constructors to UOp.
+
+\section{Rewrite contracts and structural normalization}
+
+\label{sec:contracts}
+
+The examples operate on well-formed terms. Establish validity at the
+entry point by validation or a construction known to preserve it;
+internal rewrites then preserve it by their stated premises and
+equality proofs. This can be maintained as an internal invariant.
+Explicit proof objects are an optional implementation technique.
+An incomplete Hermiticity checker may reject a rewritten axis even when
+it is equal to the original; a trusted rewrite preserves the property
+without requiring the checker to rediscover it.
+
+The listings form a small reference implementation of these patterns.
+They assume valid input and are separate from the repository's public
+API; Section~\ref{sec:implementation} records what is implemented there.
+
+A local rewrite $a\longrightarrow b$ must establish $a\equiv b$ and
+well-formedness of the replacement. Its contract has four parts:
+\begin{enumerate}
+\item \textbf{Match:} which constructor or list fragment is recognized?
+\item \textbf{Premises:} which dimensions, permutations, Hermiticity
+facts, or syntactic equalities make the equation applicable?
+\item \textbf{Replacement:} what term represents the other side?
+\item \textbf{Direction and cost:} why use this orientation in this pass,
+and can it duplicate subterms or introduce additional nodes?
+\end{enumerate}
+
+For example, fusion matches the same rotation axis, and permutation
+movement matches the full factor or block decomposition. Constructor
+names alone do not establish these premises.
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lLL@{}}
+\toprule
+Pattern & Algebraic use & Haskell operation\\
+\midrule
+All children & Adjoint, block rotation, traversal & \code{map}\\
+Aligned lists & Compose matching tensor factors or sum blocks & Guard dimensions, then \code{zipWith}\\
+Unequal product lengths & Lift composition out of parallel operands & Pad with identities, then \code{transpose}\\
+Adjacent factors & Inverse cancellation, rotation/permutation fusion & One shared list scan\\
+Selected operand & Distribute a tensor over one direct sum & \code{break}, retain prefix and suffix\\
+Whole tree & Select locations and repeat a directed rule set & Bottom-up traversal with an explicit stopping policy\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\paragraph{Equality is stronger than equality up to phase.}
+For a phase $\lambda$, $\lambda A$ may give the same isolated quantum
+state up to phase, but $I\oplus\lambda A$ generally differs observably
+from $I\oplus A$. Rewrites must therefore preserve exact operator
+equality in every context. The scalar-phase rules below do so.
+
+\emph{Well-formedness} establishes validity; \emph{normalization} fixes
+representational invariants; \emph{optimization} improves a stated cost.
+For example, lifting compositions reduces nesting but can increase size.
+
+\subsection{Associativity, units, and dimension zero}
+
+Use the usual lexicographic basis for tensor products, with the first
+factor varying slowest, and concatenated bases for direct sums. Then
+associativity holds as literal matrix equality:
+\[
+ (A\otimes B)\otimes C=A\otimes(B\otimes C),\qquad
+ (A\oplus B)\oplus C=A\oplus(B\oplus C),\qquad
+ (AB)C=A(BC).
+\]
+Hence nested nodes of the same kind can be flattened without a
+permutation. For example, \code{Tensor [a,Tensor [b,c],d]} becomes
+\code{Tensor [a,b,c,d]}. Operand order is preserved.
+
+\begin{center}
+\begin{tabularx}{\linewidth}{@{}lLL@{}}
+\toprule
+List operation & Dimension & Empty list / unit\\
+\midrule
+$\bigotimes_i A_i$ & $\prod_i d_i$ & $I_1$\\
+$\bigoplus_i A_i$ & $\sum_i d_i$ & $I_0$\\
+$A_1\cdots A_k$ & Common dimension $d$ & $I_d$\\
+\bottomrule
+\end{tabularx}
+\end{center}
+Every singleton list denotes its sole operand. The unit laws are
+\[
+ I_1\otimes A=A=A\otimes I_1,\qquad
+ I_0\oplus A=A=A\oplus I_0,\qquad
+ I_dA=A=AI_d\quad(\dim A=d).
+\]
+Only these units may be deleted. In particular, $I_2\otimes A$ and
+$I_2\oplus A$ generally have different dimensions from $A$.
+Products and sums of identities can instead be combined:
+\[
+ \bigotimes_i I_{d_i}=I_{\prod_i d_i},\qquad
+ \bigoplus_i I_{d_i}=I_{\sum_i d_i},\qquad
+ I_0\otimes A=I_0=A\otimes I_0.
+\]
+The last law follows because a tensor product with a zero-dimensional
+space has dimension zero. Every valid dimension-zero term can therefore
+be represented by the same canonical identity.
+
+\begin{lstlisting}
+identity :: Dim -> UOp
+identity d = Compose d []
+
+dim :: UOp -> Dim
+dim (R a _)             = dim a
+dim (Tensor xs)          = product (map dim xs)
+dim (DirectSum xs)       = sum (map dim xs)
+dim (Compose d _)        = d
+dim (PermuteTensor ds _) = product ds
+dim (PermuteSum ds _)    = sum ds
+
+isIdentity :: UOp -> Bool
+isIdentity (Compose _ []) = True
+isIdentity _             = False
+\end{lstlisting}
+
+\code{isIdentity} recognizes the chosen syntax for identities; it does
+not decide whether an arbitrary term denotes an identity. The same
+distinction applies to the derived \code{Eq} instance: syntactic equality
+is a sufficient, incomplete test for semantic equality.
+
+\Needspace{34\baselineskip}
+\subsection{Structural builders}
+
+These internal builders take valid operands with structurally normalized
+children. In particular, \code{compose d xs} requires $\code{dim x}=d$
+for every operand. Each builder flattens its own operation and removes
+its unit; \code{finish} handles dimension zero, identities, and singletons.
+
+\begin{lstlisting}
+tensor :: [UOp] -> UOp
+tensor xs = finish Tensor (product (map dim ys)) ys
+  where
+    ys = filter (/= identity 1) (concatMap unpack xs)
+    unpack (Tensor zs) = zs
+    unpack x           = [x]
+
+directSum :: [UOp] -> UOp
+directSum xs = finish DirectSum (sum (map dim ys)) ys
+  where
+    ys = filter (/= identity 0) (concatMap unpack xs)
+    unpack (DirectSum zs) = zs
+    unpack x              = [x]
+
+compose :: Dim -> [UOp] -> UOp
+compose d xs = finish (Compose d) d (concatMap unpack xs)
+  where
+    unpack (Compose _ zs) = zs  -- Empty compositions disappear.
+    unpack x              = [x]
+
+finish :: ([UOp] -> UOp) -> Dim -> [UOp] -> UOp
+finish con d xs
+  | d == 0 || all isIdentity xs = identity d
+  | [x] <- xs                  = x
+  | otherwise                  = con xs
+\end{lstlisting}
+
+Since \code{all isIdentity []} is true, \code{finish} handles all
+three empty lists with their respective dimensions.
+
+For example, assuming $a$ is normalized,
+\[
+\begin{aligned}
+ \code{tensor [identity 1,a]}&=a,\\
+ \code{directSum [identity 2,identity 3]}&=\code{identity 5},\\
+ \code{tensor [identity 2,identity 3]}&=\code{identity 6},\\
+ \code{compose (dim a) [identity (dim a),a]}&=a.
+\end{aligned}
+\]
+These are structural invariants, not a complete normal form for matrix
+equality. For example, adjacent identity factors inside a larger mixed
+tensor list are not combined by this minimal implementation.
+
+\paragraph{Validate before erasing.}
+Check raw input recursively before normalization: erasing a zero-dimensional
+tensor could otherwise hide an invalid child, and flattening a composition
+could discard an incorrect dimension annotation. Internal builders may
+rely on the validity contract established at the entry point.
+
+\section{Permutations and adjoints}
+
+Let $\ds=(d_0,\ldots,d_{k-1})$ and
+$\ds_p=(d_{p_0},\ldots,d_{p_{k-1}})$.
+The tensor permutation $T(\ds,p)$ sends
+\[
+ v_0\otimes\cdots\otimes v_{k-1}
+ \longmapsto v_{p_0}\otimes\cdots\otimes v_{p_{k-1}}.
+\]
+The sum permutation $S(\ds,p)$ sends a concatenation of vectors to
+the concatenation in that same reordered block order. The matrices are
+square, of dimensions $\prod_i d_i$ and $\sum_i d_i$, respectively.
+Their input and output \emph{decompositions} can nevertheless differ.
+
+For either kind of permutation, writing $P$ for $T$ or $S$,
+\begin{align}
+ P(\ds,\mathrm{id})&=I, \label{eq:perm-id}\\
+ P(\ds,p)^\dagger&=P(\ds_p,p^{-1}), \label{eq:perm-adjoint}\\
+ P(\ds_p,q)P(\ds,p)&=P(\ds,r),
+       \qquad r_j=p_{q_j}. \label{eq:perm-compose}
+\end{align}
+Follow a factor or block through the reorderings to obtain these laws.
+The adjoint needs both the inverse index permutation and the reordered
+dimension list.
+
+For example, $S([1,2],[1,0])$ maps $(x,y,z)$ to $(y,z,x)$.
+It is a three-cycle, although $[1,0]$ is an involution. Its adjoint is
+$S([2,1],[1,0])$, not another copy of itself.
+Therefore an involutive \emph{block-index permutation} alone does not
+establish Hermiticity when block sizes differ.
+
+For $\dim A_i=d_i$, the naturality laws are
+\begin{align}
+ T(\ds,p)\left(\bigotimes_i A_i\right)T(\ds,p)^\dagger
+    &=\bigotimes_j A_{p_j}, \label{eq:tensor-naturality}\\
+ S(\ds,p)\left(\bigoplus_i A_i\right)S(\ds,p)^\dagger
+    &=\bigoplus_j A_{p_j}. \label{eq:sum-naturality}
+\end{align}
+For tensors, apply both sides to a pure tensor; these span the space.
+For sums, apply both sides to a vector supported in one block.
+These equations justify reordering \emph{with} conjugating permutations.
+Neither tensor nor direct sum is generally commutative as a matrix
+operation, so sorting their operand lists is not a valid normalization.
+
+\paragraph{Associativity does not make permutation metadata optional.}
+Flattening a tensor or sum preserves its matrix. But a permutation that
+refers to the old grouping must retain those grouped dimensions, or
+be explicitly translated to the new grouping. Likewise, removing a
+dimension-one tensor factor or a dimension-zero sum block requires
+updating any permutation that refers to its position. The list index
+alone is not a stable identifier for an operand.
+
+\subsection{Helpers and structural adjoints}
+
+\label{sec:adjoints}
+
+For readability, use lists for the small permutation metadata. The
+following helper interprets our output-selects-input convention directly:
+
+\begin{lstlisting}
+reorder :: Permutation -> [a] -> [a]
+reorder p xs = map (xs !!) p
+
+inverse :: Permutation -> Permutation
+inverse p = map snd (sortOn fst (zip p [0..]))
+
+permutation :: ([Dim] -> Permutation -> UOp)
+            -> ([Dim] -> Dim) -> [Dim] -> Permutation -> UOp
+permutation con size ds p
+  | d <= 1 || p == [0 .. length ds - 1] = identity d
+  | otherwise                         = con ds p
+  where d = size ds
+
+permuteTensor, permuteSum :: [Dim] -> Permutation -> UOp
+permuteTensor = permutation PermuteTensor product
+permuteSum    = permutation PermuteSum sum
+\end{lstlisting}
+
+These helpers require valid permutations. In dimensions zero and one,
+every permutation matrix is the identity. If metadata becomes large,
+replace list indexing in \code{reorder} with an array or vector; no
+basis permutation of size $\prod_i d_i$ need be materialized.
+
+Adjoints are derived operations, so a separate constructor is unnecessary:
+\[
+ (AB)^\dagger=B^\dagger A^\dagger,\quad
+ (A\otimes B)^\dagger=A^\dagger\otimes B^\dagger,\quad
+ (A\oplus B)^\dagger=A^\dagger\oplus B^\dagger.
+\]
+Only composition reverses its list. For accepted rotations,
+$\Rot A t^\dagger=\Rot A{-t}$; the axis remains unchanged.
+
+\begin{lstlisting}
+adjoint :: UOp -> UOp
+adjoint op = case op of
+  R a t            -> rotation a (-t)
+  Tensor xs        -> tensor (map adjoint xs)
+  DirectSum xs     -> directSum (map adjoint xs)
+  Compose d xs     -> compose d (map adjoint (reverse xs))
+  PermuteTensor ds p ->
+    permuteTensor (reorder p ds) (inverse p)
+  PermuteSum ds p ->
+    permuteSum (reorder p ds) (inverse p)
+\end{lstlisting}
+
+The rotation helper is given next. All well-formed terms are unitary, so
+$A^\dagger=A^{-1}$ and $AA^\dagger=A^\dagger A=I_{\dim A}$.
+These laws permit adjacent cancellation in a composition list; they do
+not permit cancelling separated operands across an arbitrary intervening
+operator. Applying \code{adjoint} twice preserves the denotation, although
+normalization may change the syntax.
+
+\section{Phases and rotations}
+
+\label{sec:phases}
+
+Scalar phase is an abbreviation:
+\[
+ \Ph t=[e^{i\pi t}]=\Rot{I_1}{-2t},
+ \qquad \operatorname{scale}(t,A)=\Ph t\otimes A=e^{i\pi t}A.
+\]
+Thus \code{Phase} is optional in the core. Its derived implementation
+costs one rotation node. Scalar rules include
+\[
+ \Ph0=I_1,\quad \Ph{s+2k}=\Ph s,\quad
+ \Ph s\Ph t=\Ph s\otimes\Ph t=\Ph{s+t},\quad
+ \Ph t^\dagger=\Ph{-t}.
+\]
+Scalar factors commute with every operator after lifting to its
+dimension. Under composition and tensor product their phases add:
+\[
+ \operatorname{scale}(s,A)\operatorname{scale}(t,B)
+   =\operatorname{scale}(s+t,AB),\qquad
+ \operatorname{scale}(s,A)\otimes\operatorname{scale}(t,B)
+   =\operatorname{scale}(s+t,A\otimes B).
+\]
+A \emph{common} phase may move across a direct sum:
+$\bigoplus_i\operatorname{scale}(t,A_i)
+=\operatorname{scale}(t,\bigoplus_i A_i)$.
+Different block phases remain relative phases; they cannot simply be added.
+In a flat composition a scalar phase is attached to \emph{one} factor:
+\[
+ \operatorname{scale}(t,A_1\cdots A_m)
+ =\operatorname{scale}(t,A_1)A_2\cdots A_m\qquad(m>0).
+\]
+Attaching it to every factor would multiply the phase by $m$. Conversely,
+scaling a direct sum must scale \emph{every} block. These two cases must
+remain distinct in the implementation.
+
+If $A$ is unitary and Hermitian, $A^2=I$. Splitting the exponential's
+power series into its even and odd terms gives
+\begin{equation}
+ \Rot A t=\cos(\pi t/2)I-i\sin(\pi t/2)A. \label{eq:involution-exp}
+\end{equation}
+In particular, for $k\in\mathbb Z$,
+\[
+ \Rot A0=I,\quad \Rot A{t+4k}=\Rot At,\quad
+ \Rot A{2k}=(-1)^kI,\quad \Rot A{2k+1}=-i(-1)^kA.
+\]
+Also $R_{-A}(t)=R_A(-t)$ and
+$R_{I_d}(t)=\operatorname{scale}(-t/2,I_d)$.
+The following minimal helper implements only zero, periodicity, and
+dimension zero. Special integer angles can be a separate rule.
+
+\begin{lstlisting}
+modFour :: Rational -> Rational
+modFour t = t - 4 * fromInteger (ceiling ((t - 2) / 4))
+
+rotation :: UOp -> Rational -> UOp
+rotation a t
+  | dim a == 0 || r == 0 = identity (dim a)
+  | otherwise           = R a r
+  where r = modFour t
+
+phase :: Rational -> UOp
+phase t = rotation (identity 1) (-2*t)
+
+scale :: Rational -> UOp -> UOp
+scale t a = tensor [phase t, a]
+\end{lstlisting}
+
+\textbf{The precondition concerns the original angle.}
+For $t\ne0$, \code{rotation} requires a proved Hermitian axis before
+reducing $t$ modulo four. For example, a non-Hermitian axis with angle
+$4$ must not be accepted merely because $4\bmod4=0$.
+At the original angle zero, a valid non-Hermitian axis is allowed.
+
+\subsection{Rotation rewrites}
+
+For compatible dimensions and accepted rotations, the useful laws are
+\begin{align}
+ \Rot As\Rot At&=\Rot A{s+t}, \label{eq:exp-fuse}\\
+ U\Rot At U^\dagger&=\Rot{UAU^\dagger}t, \label{eq:exp-conjugate}\\
+ \Rot{\bigoplus_i A_i}t&=\bigoplus_i\Rot{A_i}t,
+       \label{eq:exp-sum}\\
+ \Rot{I_a\otimes A\otimes I_c}t
+     &=I_a\otimes\Rot At\otimes I_c. \label{eq:exp-id-tensor}
+\end{align}
+Equation~\eqref{eq:exp-fuse} follows because scalar multiples of the same
+matrix commute. For conjugation, $(UAU^\dagger)^k=UA^kU^\dagger$.
+Powers of a block-diagonal matrix are block diagonal, proving
+\eqref{eq:exp-sum}. Powers of $I_a\otimes A\otimes I_c$ give
+\eqref{eq:exp-id-tensor}. Each argument includes the zeroth power.
+These are instances of the standard matrix-exponential calculus
+\cite{higham-exp}.
+
+For nonzero angles, Hermiticity of a direct sum implies Hermiticity of
+every block, so \eqref{eq:exp-sum} preserves the typing premise.
+In \eqref{eq:exp-id-tensor}, the right-hand rotation must be valid;
+Hermiticity of the whole axis alone does not imply Hermiticity of $A$
+when $a=0$ or $c=0$. Normalize that dimension-zero case to $I_0$ first.
+
+There is no general law distributing an exponential over a tensor
+product or a composition:
+\[
+ \Rot{A\otimes B}t\ne\Rot At\otimes\Rot Bt,
+ \qquad
+ \Rot{AB}t\ne\Rot At\Rot Bt.
+\]
+Both proposed laws already fail for $A=B=I_1$ and $t=2$: the left side
+is $[-1]$ and the right side is $[1]$.
+The familiar identity $e^{X+Y}=e^Xe^Y$ for commuting $X,Y$ involves
+\emph{ordinary matrix addition}. Direct sum is different, and a sum of
+two Hermitian unitaries need not be a valid UOp axis.
+
+\begin{lstlisting}
+splitRotationSum :: UOp -> Maybe UOp
+splitRotationSum (R (DirectSum xs) t) =
+  Just (directSum [rotation x t | x <- xs])
+splitRotationSum _ = Nothing
+
+conjugate :: UOp -> UOp -> UOp
+conjugate u a = compose (dim a) [u, a, adjoint u]
+\end{lstlisting}
+
+\code{conjugate u a} assumes equal dimensions. Equation~\eqref{eq:exp-conjugate}
+can move a conjugation into or out of a rotation depending on the
+chosen optimization. Similarly, splitting a block rotation exposes
+independent blocks; factoring equal-angle block rotations can make
+the representation smaller. A rewrite strategy chooses the direction.
+
+\section{Adjacent rewrites on composition lists}
+
+Associativity makes every pair of adjacent factors directly accessible.
+One generic list function is sufficient; there is no need to enumerate
+the possible binary-tree shapes.
+
+\begin{lstlisting}
+type Rule = UOp -> Maybe UOp
+type PairRule = UOp -> UOp -> Maybe UOp
+
+rewriteAdjacent :: PairRule -> [UOp] -> Maybe [UOp]
+rewriteAdjacent rule (a : b : rest) =
+  case rule a b of
+    Just c  -> Just (c : rest)
+    Nothing -> (a :) <$> rewriteAdjacent rule (b : rest)
+rewriteAdjacent _ _ = Nothing
+
+inComposition :: PairRule -> Rule
+inComposition rule (Compose d xs) =
+  compose d <$> rewriteAdjacent rule xs
+inComposition _ _ = Nothing
+\end{lstlisting}
+
+The first successful pair is replaced, preserving its prefix and
+suffix. \code{Nothing} means that this rule did not match; it is not a
+typing failure or a proof that no useful equality exists.
+
+This deliberately simple scan makes one replacement per composition
+per pass. Cancelling a list of $n$ copies of $X$ therefore takes
+$\Theta(n)$ passes and $\Theta(n^2)$ total traversal work. A stack-based
+scan can revisit newly adjacent factors within one traversal.
+
+Same-axis rotation fusion, cancellation, and permutation composition
+are small pair rules:
+
+\begin{lstlisting}
+fuse :: PairRule
+fuse (R a s) (R b t)
+  | a == b = Just (rotation a (s + t))
+fuse (PermuteTensor left q) (PermuteTensor ds p)
+  | left == reorder p ds =
+      Just (permuteTensor ds (reorder q p))
+fuse (PermuteSum left q) (PermuteSum ds p)
+  | left == reorder p ds =
+      Just (permuteSum ds (reorder q p))
+fuse a b
+  | a == adjoint b = Just (identity (dim a))
+  | otherwise     = Nothing
+
+fuseComposition :: Rule
+fuseComposition = inComposition fuse
+\end{lstlisting}
+
+The permutation guard matches the \emph{output decomposition of the
+right operand} with the input decomposition of the left operand.
+Equal total dimensions alone do not justify composing their metadata.
+All other pairs remain available to the enclosing composition.
+
+Syntactic equality is sufficient but incomplete for these matches.
+Adjoint comparison can also traverse an entire subtree; sharing or cached
+adjoints can reduce that cost.
+
+\subsection{Moving a permutation across a parallel layer}
+
+Naturality also gives a useful adjacent-pair rewrite, without expanding
+the permutation into basis indices:
+\[
+ P(\ds,p)\,\mathop{\star}_i A_i
+ =\left(\mathop{\star}_j A_{p_j}\right)P(\ds,p),
+ \qquad \dim A_i=d_i.
+\]
+Here $(P,\star)$ is either $(T,\otimes)$ or $(S,\oplus)$. This is the
+conjugation law multiplied on the right by $P$. Notice that $P$ retains
+its \emph{original input dimensions}; it is the parallel layer that is
+reordered. The equality follows even when those dimensions are unequal.
+
+\begin{lstlisting}
+movePermutationRight :: PairRule
+movePermutationRight p@(PermuteTensor ds order) (Tensor xs)
+  | ds == map dim xs =
+      Just (compose (product ds) [tensor (reorder order xs), p])
+movePermutationRight p@(PermuteSum ds order) (DirectSum xs)
+  | ds == map dim xs =
+      Just (compose (sum ds) [directSum (reorder order xs), p])
+movePermutationRight _ _ = Nothing
+
+movePermutation :: Rule
+movePermutation = inComposition movePermutationRight
+\end{lstlisting}
+
+The result contains a composition because the pair is replaced by
+\emph{two} factors, not by one primitive. The enclosing composition
+builder flattens it immediately. The same adjacent-pair scan used for
+fusion therefore also handles this rule.
+
+\paragraph{Matching shape is essential.}
+The guard compares dimension \emph{lists}, not just their sums or
+products. A permutation of blocks $[1,3]$ cannot be pushed through a
+layer with blocks $[2,2]$ by reusing its index list. That would move
+different basis coordinates. One must first establish a compatible
+decomposition or leave the rule inapplicable.
+
+Moving permutations right can expose fusion; moving them left can suit
+a backend's output layout. Choose one direction for a pass.
+
+\section{Interchange and composition lifting}
+
+\subsection{Compose aligned factors or blocks}
+
+When $\dim A_i=\dim B_i=d_i$ for every position,
+\begin{align}
+ \left(\bigotimes_i A_i\right)
+ \left(\bigotimes_i B_i\right)
+   &=\bigotimes_i(A_iB_i), \label{eq:tensor-interchange}\\
+ \left(\bigoplus_i A_i\right)
+ \left(\bigoplus_i B_i\right)
+   &=\bigoplus_i(A_iB_i). \label{eq:sum-interchange}
+\end{align}
+The first is the mixed-product law for the Kronecker product
+\cite{higham-kron}; the second follows by block multiplication.
+Both preserve the left-to-right order inside each product $A_iB_i$.
+There are no cross terms between distinct direct-sum blocks.
+
+\begin{lstlisting}
+interchange :: PairRule
+interchange (Tensor as) (Tensor bs)
+  | map dim as == map dim bs =
+      Just (tensor (zipWith times as bs))
+interchange (DirectSum as) (DirectSum bs)
+  | map dim as == map dim bs =
+      Just (directSum (zipWith times as bs))
+interchange _ _ = Nothing
+
+times :: UOp -> UOp -> UOp
+times a b = compose (dim a) [a, b]
+
+interchangeComposition :: Rule
+interchangeComposition = inComposition interchange
+\end{lstlisting}
+
+Equality of the dimension lists checks both lengths and corresponding
+dimensions, preventing \code{zipWith} from silently truncating a list.
+The helper \code{times} assumes its operands have equal dimension.
+
+For several aligned products, one could transpose a rectangular list
+of operands and compose each column. Reusing the adjacent-pair rule is
+usually simpler and already covers arbitrary composition lengths.
+Different decompositions of the same total dimension do not match this
+rule. For example, block sizes $[1,3]$ and $[2,2]$ cannot be zipped.
+An arbitrary unitary block cannot be split at a desired boundary unless
+it actually preserves that decomposition.
+
+\paragraph{Useful consequences.}
+Operators on disjoint tensor factors commute:
+\[
+ (A\otimes I_b)(I_a\otimes B)
+   =A\otimes B
+   =(I_a\otimes B)(A\otimes I_b),
+ \qquad \dim A=a,\quad\dim B=b.
+\]
+This follows directly from \eqref{eq:tensor-interchange}; it does not
+license arbitrary reordering of composition operands.
+The two interchange laws also imply that tensor products and direct
+sums of unitaries are unitary, by applying them to each operator and
+its adjoint.
+
+\subsection{Lift composition by padding and transposing}
+
+\label{sec:lifting}
+
+Orienting interchange outward gives a flat composition of parallel
+layers, even when operand composition lists have different lengths. For example,
+\begin{align*}
+ (AB)\otimes C&=(A\otimes C)(B\otimes I_{\dim C}),\\
+ (AB)\oplus C&=(A\oplus C)(B\oplus I_{\dim C}).
+\end{align*}
+The second layer contains an \emph{identity}, not another copy of $C$.
+With two nontrivial lists the same construction gives
+\[
+ (A_1A_2)\otimes(B_1B_2B_3)
+ =(A_1\otimes B_1)(A_2\otimes B_2)(I_{\dim A_1}\otimes B_3).
+\]
+These products retain mathematical order: the rightmost layer acts first.
+
+\par\noindent\begin{minipage}{\linewidth}
+\begin{proposition}[Composition lifting]
+Let $\star$ denote either tensor product or direct sum. For each position
+$j$, let $A_{j1},\ldots,A_{jm_j}$ be operators on $\C^{d_j}$, and let
+$m=\max\{0,m_1,\ldots,m_k\}$. Extend each list to length $m$ by appending $I_{d_j}$.
+Writing $\widehat A_{j\ell}$ for the padded entries, we have
+\[
+ \mathop{\star}_{j=1}^k\left(\prod_{\ell=1}^{m_j}A_{j\ell}\right)
+ =\prod_{\ell=1}^m\left(\mathop{\star}_{j=1}^k\widehat A_{j\ell}\right).
+\]
+Every layer on the right has dimension $\prod_j d_j$ for tensor, or
+$\sum_j d_j$ for direct sum. Empty products retain their annotated
+dimension. When there are no operands or all products are empty, the
+usual identity laws supply the result.
+\end{proposition}
+\begin{proof}
+Padding does not change any operand. Apply the appropriate interchange
+law repeatedly to the right-hand product of layers. In each position
+the resulting product is the original operand followed by identities.
+\end{proof}
+\end{minipage}\par
+
+\paragraph{The list layout.}
+Regard each operand's factors as one row, pad the rows to a rectangle,
+then transpose to obtain the layers:
+\[
+ \begin{bmatrix} A_1&A_2&I_a\\ B_1&B_2&B_3\end{bmatrix}
+ \quad\longmapsto\quad
+ \begin{bmatrix} A_1&B_1\\ A_2&B_2\\ I_a&B_3\end{bmatrix}.
+\]
+This produces $m$ layers with $k$ slots each, not a Cartesian product
+of choices. Only identity slots are added; original factors are not
+repeated. Repeated lifting through larger contexts may still duplicate
+identity padding and increase the full tree's node count.
+
+\subsection{One helper for both parallel operations}
+
+The two cases share one helper. A non-composition is a one-element list;
+an empty composition contributes identities of its own dimension.
+The constructors passed to the helper are the structural builders above,
+which do not themselves lift compositions.
+
+\begin{lstlisting}
+liftCompositions :: Rule
+liftCompositions (Tensor xs) = liftParallel tensor product xs
+liftCompositions (DirectSum xs) = liftParallel directSum sum xs
+liftCompositions _ = Nothing
+
+liftParallel :: ([UOp] -> UOp) -> ([Dim] -> Dim)
+             -> [UOp] -> Maybe UOp
+liftParallel con size xs
+  | any isComposition xs =
+      Just (compose (size (map dim xs)) (map con layers))
+  | otherwise = Nothing
+  where
+    isComposition (Compose _ (_:_)) = True
+    isComposition _                 = False
+    factors (Compose _ ys) = ys
+    factors a              = [a]
+    rows = map factors xs
+    height = maximum (0 : map length rows)
+    pad a ys = ys ++ replicate (height - length ys)
+                              (identity (dim a))
+    layers = transpose (zipWith pad xs rows)
+\end{lstlisting}
+
+\paragraph{Padding preserves the decomposition.}
+Use the original operand's dimension: an empty \code{Compose d []}
+row still needs $I_d$. Pad before transposing so every layer keeps the
+same factor or block dimensions. Transposing ragged lists loses slots;
+cycling a short row repeats its operator.
+
+\paragraph{Keep phases inside the chosen form.}
+Scale one factor of a nonempty composition, as in
+Section~\ref{sec:phases}. Wrapping it in
+\code{Tensor [phase t,Compose d xs]} would reintroduce the nesting
+that lifting removes.
+
+\paragraph{Choose one orientation.}
+\code{interchangeComposition} moves composition into a parallel
+operation; \code{liftCompositions} moves it out. Use the former to
+expose local cancellations and the latter to obtain layers. Installing
+both in the same fixed point can make the expression oscillate.
+
+\section{Tensor distribution}
+
+\label{sec:distribution}
+
+Leftmost direct sums distribute literally in the chosen basis order:
+\begin{equation}
+ \left(\bigoplus_i B_i\right)\otimes C
+   =\bigoplus_i(B_i\otimes C). \label{eq:left-distribute}
+\end{equation}
+This follows immediately from the block definition of the Kronecker
+product. The corresponding list rule is a map over the branches:
+
+\begin{lstlisting}
+distributeFirst :: Rule
+distributeFirst (Tensor (DirectSum branches : rest)) =
+  Just (directSum [tensor (b : rest) | b <- branches])
+distributeFirst _ = Nothing
+\end{lstlisting}
+
+Distribution over another operand must account for the basis order.
+For instance,
+\[
+ I_2\otimes([1]\oplus[-1])=\diag(1,-1,1,-1),\qquad
+ (I_2\otimes[1])\oplus(I_2\otimes[-1])=\diag(1,1,-1,-1).
+\]
+They are permutation-conjugate, not equal. A rewrite that merely maps
+the surrounding tensor factors into each branch changes the operator.
+
+To distribute a selected sum, write
+\[
+ M=A\otimes\left(\bigoplus_i B_i\right)\otimes C,
+ \qquad a=\dim A,\quad b=\sum_i\dim B_i,\quad c=\dim C.
+\]
+Set $P=T([a,b,c],[1,0,2])$, which moves the sum before $A$.
+Tensor naturality and \eqref{eq:left-distribute} give
+\[
+ PMP^\dagger
+  =\left(\bigoplus_i B_i\right)\otimes A\otimes C
+  =\bigoplus_i(B_i\otimes A\otimes C).
+\]
+Thus the exact matrix-preserving rewrite is
+\begin{equation}
+ \boxed{\displaystyle
+ M=P^\dagger\left(\bigoplus_i(B_i\otimes A\otimes C)\right)P.}
+ \label{eq:distribute}
+\end{equation}
+It is especially simple because it allows $B_i$ to appear first inside
+each output block. No basis permutation of dimension $abc$ is expanded;
+$P$ stores just three dimensions and three indices.
+
+If the desired block order is instead $A\otimes B_i\otimes C$, put
+$b_i=\dim B_i$ and define
+\[
+ D=\left[\left(\bigoplus_i T([b_i,a],[1,0])\right)
+               T([a,b],[1,0])\right]\otimes I_c.
+\]
+Then $DMD^\dagger=\bigoplus_i(A\otimes B_i\otimes C)$, so
+$M=D^\dagger(\bigoplus_i(A\otimes B_i\otimes C))D$.
+This version preserves the original factor order inside each branch,
+at the cost of additional symbolic shuffles.
+
+\Needspace{30\baselineskip}
+\subsection{Match a prefix, a selected sum, and a suffix}
+
+The general rule needs only one list split. \code{break} finds the
+first direct-sum operand; \code{before} and \code{after} supply $A$
+and $C$ in \eqref{eq:distribute}.
+
+\begin{lstlisting}
+distributeTensor :: Rule
+distributeTensor (Tensor operands) =
+  case break isDirectSum operands of
+    (before, DirectSum branches : after) ->
+      let a = product (map dim before)
+          b = sum (map dim branches)
+          c = product (map dim after)
+          shuffle = permuteTensor [a, b, c] [1, 0, 2]
+          expanded = directSum
+            [ tensor (branch : (before ++ after))
+            | branch <- branches
+            ]
+      in Just (compose (a * b * c)
+           [adjoint shuffle, expanded, shuffle])
+    _ -> Nothing
+distributeTensor _ = Nothing
+
+isDirectSum :: UOp -> Bool
+isDirectSum (DirectSum _) = True
+isDirectSum _             = False
+\end{lstlisting}
+
+Empty prefixes or suffixes have dimension one. An empty branch list
+has dimension zero. The formula remains valid in each case, although
+normalization usually eliminates empty sums and other zero-dimensional
+terms before this rule runs.
+
+Try \code{distributeFirst} first: it avoids an identity shuffle that
+the minimal permutation constructor may not recognize when a factor
+has dimension one.
+
+\paragraph{Factoring is the inverse rule, with the same ordering premises.}
+For example, a common tensor suffix can be factored exactly:
+\[
+ \bigoplus_i(B_i\otimes C)
+   =\left(\bigoplus_i B_i\right)\otimes C.
+\]
+Matching explicit tensor suffixes requires only comparing lists, not
+searching all binary parenthesizations. A common tensor prefix instead
+needs the corresponding shuffle. Do not discard it when reversing
+\eqref{eq:distribute}.
+
+Distribution can duplicate the surrounding factors into many branches.
+Keep it out of the structural builders and select expansions using the
+budgets in Section~\ref{sec:budgets}.
+
+\Needspace{32\baselineskip}
+\section{Traversal, strategy, and soundness}
+
+\subsection{Traversal and cleanup}
+
+\label{sec:traversal}
+
+A rule inspects one root. A traversal decides where roots are visited.
+The following two helpers work for every local rule in this note:
+
+\begin{lstlisting}
+mapChildren :: (UOp -> UOp) -> UOp -> UOp
+mapChildren f op = case op of
+  R a t        -> R (f a) t
+  Tensor xs    -> Tensor (map f xs)
+  DirectSum xs -> DirectSum (map f xs)
+  Compose d xs -> Compose d (map f xs)
+  _            -> op
+
+bottomUp :: (UOp -> UOp) -> UOp -> UOp
+bottomUp f = go
+  where go a = f (mapChildren go a)
+
+cleanup :: UOp -> UOp
+cleanup op = case op of
+  R a t             -> rotation a t
+  Tensor xs         -> tensor xs
+  DirectSum xs      -> directSum xs
+  Compose d xs      -> compose d xs
+  PermuteTensor ds p -> permuteTensor ds p
+  PermuteSum ds p    -> permuteSum ds p
+\end{lstlisting}
+
+\code{mapChildren} preserves the root and metadata; \code{cleanup}
+rebuilds through the structural constructors. Bottom-up traversal
+processes children first, including rotation axes. A replacement can
+introduce new redexes, so one traversal need not reach a fixed point.
+
+\subsection{Rule priority and stopping}
+
+\label{sec:strategy}
+
+Rule priority is explicit. Each local call chooses the first applicable
+rule; a later traversal can revisit the result. Here \code{<|>} chooses
+the first \code{Just}, and \code{fromMaybe} leaves an unmatched term alone.
+
+\begin{lstlisting}
+firstRule :: [Rule] -> Rule
+firstRule [] _ = Nothing
+firstRule (r:rs) a = r a <|> firstRule rs a
+
+applyRules :: [Rule] -> UOp -> UOp
+applyRules rules a = fromMaybe a (firstRule rules a)
+
+pass :: [Rule] -> UOp -> UOp
+pass rules = bottomUp (cleanup . applyRules rules . cleanup)
+
+flatPass :: UOp -> UOp
+flatPass = pass [fuseComposition, liftCompositions]
+
+data RewriteResult = Stable UOp | FuelExhausted UOp
+  deriving (Show, Eq)
+
+repeatPass :: Int -> (UOp -> UOp) -> UOp -> RewriteResult
+repeatPass fuel step a
+  | fuel <= 0 = FuelExhausted a
+  | b == a    = Stable a
+  | otherwise = repeatPass (fuel - 1) step b
+  where b = step a
+\end{lstlisting}
+
+\code{flatPass} chooses outward interchange. Cleanup before matching
+and after replacement removes incidental units and associations.
+
+\paragraph{An equality test is not a termination proof.}
+A fuel bound makes the driver terminate even if a proposed rule set
+cycles. \code{FuelExhausted} returns a sound intermediate term, not a
+claimed normal form. \code{Stable} means that this particular composite
+pass made no syntactic change; it does not establish semantic canonicity
+or exclude redexes for rules that the strategy did not select. For an
+unbounded driver, justify termination of the \emph{whole} oriented rule
+set using a well-founded measure. Soundness of its individual equations
+does not provide such a measure.
+
+\subsection{Expansion budgets}
+
+\label{sec:budgets}
+
+Distribution across $r$ sums with $k_1,\ldots,k_r$ branches can expose
+$\prod_j k_j$ combinations. Its growth needs a separate strategy decision
+from composition lifting, even though both transformations are symbolic.
+
+A small wrapper bounds the number of nodes in each replacement subtree.
+It does not bound the size of the enclosing expression:
+
+\begin{lstlisting}
+nodeCount :: UOp -> Integer
+nodeCount op = 1 + case op of
+  R a _        -> nodeCount a
+  Tensor xs    -> sum (map nodeCount xs)
+  DirectSum xs -> sum (map nodeCount xs)
+  Compose _ xs -> sum (map nodeCount xs)
+  _            -> 0
+
+limitReplacementNodes :: Integer -> Rule -> Rule
+limitReplacementNodes limit rule a = case rule a of
+  Just b | nodeCount b <= limit -> Just b
+  _ -> Nothing
+\end{lstlisting}
+
+Applying this local guard at several positions can still exceed a
+whole-expression budget. For a tree with $N$ nodes, replacing an
+occurrence of $a$ by $b$ changes the total to
+$N-\code{nodeCount}\ a+\code{nodeCount}\ b$; a global budget belongs
+in the strategy that knows that context.
+
+The guard also constructs and visits the candidate before accepting it.
+Before a large expansion, estimate its branch count and duplicated
+context size from the matched lists, and reject it before allocation
+if necessary. A separate pass or rewrite bound controls search effort.
+
+Choose a cost appropriate to the task: tree size, shared nodes, depth,
+branch count, or backend operations. Flat layers can improve scheduling
+while adding identities; a factored term can preserve a smaller
+description. Run expansion and factoring as separate directed phases,
+and report a budget-limited result as partial.
+
+\subsection{Contextual soundness}
+
+\par\noindent\begin{minipage}{\linewidth}
+\begin{proposition}[Soundness of rewriting]
+Suppose a well-formed term $a$ is replaced by $b$ using any algebraic
+rule above, with its stated premises satisfied.
+Then $b$ is a valid term of the same dimension and
+$\sem b=\sem a$. The replacement remains valid inside any well-typed
+expression context, including a rotation axis.
+\end{proposition}
+\begin{proof}
+Each rule is one of the proved matrix identities, with matching
+dimensions. For newly introduced rotations, Hermiticity follows
+from the stated premise, restriction to a direct-sum block, or unitary
+conjugation. Existing unitarity is preserved by equality. Every
+constructor's denotation is a function of its children's denotations,
+so replacement by an equal matrix preserves the enclosing denotation.
+In a rotation axis it also preserves Hermiticity. Induction gives
+the result for a sequence of rewrites.
+\end{proof}
+\end{minipage}\par
+
+This is a sound collection of rules, not a complete procedure for
+semantic equality or a claim of a unique algebraic normal form.
+Lists remove associativity from pattern matching; they do not eliminate
+the choices between factored and expanded forms, block decompositions,
+or equivalent rotation axes.
+
+\section{QFT example and implementation checks}
+
+The QOp generator \code{qft n} acts on $n$ qubits, hence dimension $2^n$.
+Lowering and normalization operate on its syntax. In the repository:
+
+\begin{lstlisting}[caption={Repository entry point; separate from the standalone listings.}]
+import Programs.QFT (qft)
+import qualified QPP.UOp as U
+
+qftUOp n = fmap U.normalize (U.fromQOp (qft n))
+\end{lstlisting}
+
+The Hadamard lowering is
+\[
+ H=\Ph{1/2}\otimes
+   \bigl(R_Z(1/2)R_X(1/2)R_Z(1/2)\bigr),\quad
+ X=S([1,1],[1,0]),\quad Z=I_1\oplus\Ph1.
+\]
+After splitting the diagonal rotations and placing the scalar phase
+on the first factor, write
+\[
+ D_+=\Ph{1/4}\oplus\Ph{3/4},\qquad
+ D_-=\Ph{-1/4}\oplus\Ph{1/4},\qquad K=R_X(1/2).
+\]
+Then $H=D_+KD_-$ exactly, including its global phase. In a larger register,
+\[
+ I_a\otimes H\otimes I_c
+ =(I_a\otimes D_+\otimes I_c)
+  (I_a\otimes K\otimes I_c)
+  (I_a\otimes D_-\otimes I_c).
+\]
+This is the lifting rule applied to the actual three-factor lowering.
+For a controlled relative phase, the phase laws similarly give
+$I_2\oplus(\Ph q\otimes R_Z(2q))=I_3\oplus\Ph{2q}$.
+With intervening qubits, the appropriate tensor identity padding remains.
+
+\begin{center}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+& Lowered nodes & Lowered depth & Flat nodes & Flat depth & Factors\\
+\midrule
+\code{qft 4}  & 154 & 12 & 127  & 7 & 19\\
+\code{qft 16} & 1876 & 36 & 1561 & 7 & 169\\
+\bottomrule
+\end{tabular}
+\end{center}
+These are constructor-occurrence counts for the current implementation,
+not gate counts or claims of minimum size. Each Hadamard contributes
+three factors, each of the $n(n-1)/2$ controlled phases one, and the
+final register reversal one. For $n\ge2$ this gives
+$3n+n(n-1)/2+1$ outer factors.
+
+For \code{qft 4}, structural simplification before lifting used 110 nodes
+at depth 10; lifting gives 127 at depth 7. The additional nodes are
+identity padding and layer structure. The payoff is one outer
+\code{Compose 16} with 19 factors, each ready for local list-based rules.
+The files under \code{output/qft4/} and \code{output/qft16/} record both
+raw and normalized terms; normalized pretty prints use one factor per line.
+
+\Needspace{38\baselineskip}
+\subsection{Repository implementation and checks}
+
+\label{sec:implementation}
+
+\code{QPP.UOp} exposes syntax, pretty printing, and builders that flatten
+associations. Its production \code{normalize} also collects phases,
+simplifies rotations, cancels or fuses adjacent factors, and lifts
+compositions out of tensor products and direct sums. It uses a stack-based
+adjacent scan and repeats its specialized pass until syntactic equality.
+The result has no nonempty \code{Compose} immediately inside a tensor
+or sum; rotations may still have composite axes.
+
+Tensor products of sums remain factored. The distribution, permutation
+movement, and generic fuel/budget strategies in this note are proposed
+patterns. General UOp validation is also future work: the normalizer
+expects valid input, for example from \code{fromQOp}. Explicit proof
+objects are optional. Dimensions or adjoints can be cached if repeated
+tree walks become costly.
+
+Lowering and normalization operate symbolically. Their tests use an
+independent interpreter that applies UOp terms directly to small
+state vectors. A rotation acts by
+\[
+ R_A(t)v=\cos(\pi t/2)v-i\sin(\pi t/2)Av,
+\]
+and tensors, sums, compositions, and permutations act directly on vector
+slices or coordinates. Complex, nonuniform amplitudes expose phase and
+basis-order errors that an all-ones vector can miss.
+
+Separate small-instance checks compare raw and normalized lowering
+against QOp's matrix semantics on every basis vector. These reference
+matrices are confined to tests, including QFT instances up to three
+qubits; the lowering and normalization algorithms construct none.
+Both kinds of finite numerical checks are regression evidence, while
+the equations supply the general correctness arguments.
+
+Tests for these rules should cover:
+\begin{enumerate}
+\item \textbf{Permutations:} non-involutive orders, unequal and zero-sized
+blocks, adjoints, fusion, and the non-Hermitian $[1,2]$ block swap.
+\item \textbf{Distribution:} nonempty prefixes and suffixes, unequal or
+zero-sized branches, and non-diagonal block operators.
+\item \textbf{Interchange and lifting:} mismatched decompositions,
+unequal or empty composition lists, dimension-correct padding, and
+an outer composition without repeated operands or phases.
+\item \textbf{Rotations:} adjoints, fusion, block splitting, conjugation,
+and the original-angle distinction between $0$ and $4$ for a
+non-Hermitian axis.
+\item \textbf{Invariants:} dimension, denotation, idempotence, and
+Hermiticity inside rewritten axes; proof-object preservation if used.
+\end{enumerate}
+
+The uncaptioned listings form one Haskell module using only \code{base},
+with the imports recorded at the top of the \LaTeX{} source. The captioned
+QFT listing imports the repository. The reference implementation relies
+on the validity contract in Section~\ref{sec:contracts}.
+
+The production suite checks vector action and idempotence on 500
+generated terms, plus QFT shape and dimension through \code{qft 16}.
+QFT vector checks stop at four qubits; reference-matrix checks stop at
+three. New expansion rules need their own regression tests when added.
+
+\begin{thebibliography}{9}
+\bibitem{higham-kron}
+Nicholas J. Higham.
+\emph{What Is the Kronecker Product?} 25 August 2020.
+\href{https://nhigham.com/2020/08/25/what-is-the-kronecker-product/}
+{nhigham.com: Kronecker product}.
+Background for the mixed-product and adjoint identities.
+
+\bibitem{higham-exp}
+Nicholas J. Higham.
+\emph{What Is the Matrix Exponential?} 28 May 2020.
+\href{https://nhigham.com/2020/05/28/what-is-the-matrix-exponential/}
+{nhigham.com: matrix exponential}.
+Background for the power-series and commuting-exponential identities.
+\end{thebibliography}
+\end{document}
