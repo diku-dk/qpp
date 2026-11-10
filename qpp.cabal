@@ -11,8 +11,17 @@ build-type:      Simple
 extra-doc-files: CHANGELOG.md, latex/operator-diagrams.tex
 data-files: latex/qpp-tikz.sty
 
+flag warnings
+    description: Build with -Wall. Off by default so that student GHCi sessions and
+                 exercise builds stay quiet; development and CI use -f warnings.
+    default:     False
+    manual:      True
+
 common warnings
-    ghc-options: -Wall -Wno-orphans
+    -- Always on: a missing case in a pattern match is the bug this catches.
+    ghc-options: -Wincomplete-patterns
+    if flag(warnings)
+        ghc-options: -Wall -Wno-orphans
 
 
 common common-options
@@ -109,18 +118,22 @@ library
         ieee754,
         pqueue,
         poly,
-        semirings
+        semirings,
+        -- random is not used by the library itself; it is here so that
+        -- `cabal repl lib:qpp` and the lecture-note listings can import
+        -- System.Random without a --build-depends flag.
+        random
 --        hasktorch
     hs-source-dirs:   src
 
 common exercises-common
+  import: warnings
   default-language: GHC2021
   hs-source-dirs: exercises
   build-depends:
       base,
       hmatrix,
       qpp
-  ghc-options: -Wall
 
 executable NoCloning
   import: exercises-common
@@ -231,13 +244,13 @@ executable Stabilizers
 -- ---------------------------------------------------------------------------
 
 common problems-common
+  import: warnings
   default-language: GHC2021
   hs-source-dirs: problems
   build-depends:
       base,
       hmatrix,
       qpp
-  ghc-options: -Wall
 
 -- Week 1
 executable QubitsProblem
@@ -299,6 +312,7 @@ executable YesTeleportationProblem
 -- ---------------------------------------------------------------------------
 
 common test-common
+  import: warnings
   default-language: GHC2021
   hs-source-dirs: test
   build-depends:
@@ -309,7 +323,6 @@ common test-common
       tasty-hunit,
       tasty-quickcheck,
       QuickCheck
-  ghc-options: -Wall
 
 test-suite BackendValidation
   import: test-common
