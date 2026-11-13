@@ -9,6 +9,7 @@ module QPP.UOp
   , module QPP.UOp.FromQOp
   , module QPP.UOp.Normalize
   , module QPP.PrettyPrint.UOp
+  , showUOpTree, printUOpTree, showUOpTreeWithQubits, printUOpTreeWithQubits
   , showTikZUOp, showTikZUOpWithoutQubits
   ) where
 
@@ -16,4 +17,5 @@ import QPP.UOp.Syntax
 import QPP.UOp.FromQOp
 import QPP.UOp.Normalize
 import QPP.PrettyPrint.UOp
+import QPP.PrettyPrint.Tree (showUOpTree, printUOpTree, showUOpTreeWithQubits, printUOpTreeWithQubits)
 import QPP.PrettyPrint.TikZ (showTikZUOp, showTikZUOpWithoutQubits)

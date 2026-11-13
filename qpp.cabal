@@ -79,6 +79,7 @@ library
       QPP.PrettyPrint.Op
       QPP.PrettyPrint.UOp
       QPP.PrettyPrint.QCirc
+      QPP.PrettyPrint.Tree
       QPP.PrettyPrint.TikZ
       QPP.PrettyPrint.Matrix
       -- Example quantum programs written in HQP:
@@ -94,6 +95,8 @@ library
       Programs.RepeaterProtocol
 
     other-modules:
+      -- The syntax trees shared by the text and TikZ tree printers:
+      QPP.PrettyPrint.SyntaxTree
       QPP.TypeCheck.Pauli
       QPP.Exact.Internal.Scalar
       QPP.Exact.Internal.Order
@@ -359,6 +362,14 @@ test-suite TikZTest
   import: test-common
   type: exitcode-stdio-1.0
   main-is: TikZTest.hs
+
+test-suite TreeTest
+  import: test-common
+  type: exitcode-stdio-1.0
+  build-depends:
+    containers
+  main-is: TreeTest.hs
+  other-modules: Generators
 
 test-suite ExactTest
   import: test-common

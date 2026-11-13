@@ -225,6 +225,46 @@ putStrLn (QC.showQuantikz (QC.QCirc 2 [QC.Gate H [0], QC.Gate (C X) [0,1]]))
 -- \end{quantikz}
 ```
 
+### Syntax trees in the terminal
+
+`printOpTree` draws the syntax tree of a `QOp` as text. Each constructor is a
+node with its operands below it from left to right, so the rightmost operand
+of a composition acts first. A rotation shows its angle and has its axis as
+its child.
+
+```haskell
+printOpTree (C X ∘ (H ⊗ I))
+--    ∘
+-- ┌──┴──┐
+-- C     ⊗
+-- │   ┌─┴─┐
+-- X   H   I
+```
+
+`printOpTreeWithQubits` adds, after each node, the qubit count of the term
+rooted there:
+
+```haskell
+printOpTreeWithQubits (C X ∘ (H ⊗ I))
+--       ∘ : 2
+-- ┌─────┴─────┐
+-- C : 2       ⊗ : 2
+-- │       ┌───┴───┐
+-- X : 1   H : 1   I : 1
+```
+
+`U.printUOpTree` and `U.printUOpTreeWithQubits` draw a `UOp`, with dimensions
+in brackets as in `I[3]` and `∘[8]`; a node whose dimension is not a power of
+two is annotated `: d=...`. Each of the four has a `show...` counterpart that
+returns the drawing as a string. Leaves are spelled as `showOp` and `showUOp`
+spell them, and the counts assume well-formed input, as `n_qubits` does.
+Printing neither normalizes nor type-checks the term.
+
+A drawing is as wide as its leaves put side by side: `qft 2` takes 72 columns
+and `qft 3` takes 164. Draw the parts of a large term separately.
+
+These are the same trees as in the TikZ diagrams of the next section.
+
 ### TikZ operator diagrams
 
 `showTikZQOp` and `showTikZUOp` produce LaTeX fragments for both syntaxes:
@@ -274,11 +314,14 @@ styles are `gate`, `identity`, `phase`, `permutation`,
 each under `qpp/`. Both syntaxes use `R(t)` for the same rotation convention;
 identity subscripts and UOp composition subscripts are matrix dimensions.
 
-The implementation in `QPP.PrettyPrint.TikZ` translates each syntax into
-`Data.Tree`, then recursively emits [Forest](https://ctan.org/pkg/forest)'s bracket
-notation. Forest handles spacing and edges; the `.sty` file holds the styles
-and measures annotation widths to keep neighboring nodes clear.
-The Haskell code never estimates text widths or calculates coordinates.
+Both tree printers draw the trees built by `QPP.PrettyPrint.SyntaxTree`, which
+translates each syntax into a `Data.Tree` of subterms with their sizes; each
+printer only names the nodes. `QPP.PrettyPrint.TikZ` recursively emits
+[Forest](https://ctan.org/pkg/forest)'s bracket notation. Forest handles spacing
+and edges; the `.sty` file holds the styles and measures annotation widths to keep
+neighboring nodes clear. The TikZ printer never estimates text widths or
+calculates coordinates. `QPP.PrettyPrint.Tree` lays out the text drawing itself,
+each subtree in its own rectangle.
 
 Run `cabal run TikZOperators` from the repository root to generate examples
 and QFT fragments in `output/tikz/`, including circuit diagrams from
@@ -645,7 +688,7 @@ git clone git@github.com:diku-dk/QPP.git
 cd QPP
 cabal build lib:qpp          # the library
 cabal build all              # library, exercises, problem sheets, test suites
-cabal test all               # the six test suites
+cabal test all               # the twelve test suites
 cabal run NoCloning          # a worked exercise
 cabal run QubitsProblem      # a weekly problem sheet
 cabal repl lib:qpp           # the library in GHCi
