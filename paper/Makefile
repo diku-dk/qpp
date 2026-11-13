@@ -9,9 +9,8 @@ PDFS := $(addprefix $(OUTPUT)/,$(TARGETS))
 CHECKS := $(addprefix check-,$(STEMS))
 RENDERS := $(addprefix render-,$(STEMS))
 
-# Per-paper options for check_paper.py; every paper gets the TeX diagnostics
-# and reference checks. exact-qop was budgeted at 15 pages and now has 16.
-CHECK_ARGS_exact-qop := --max-pages 16 --require "HQP project" --require "MSc thesis"
+# Every paper gets the TeX diagnostics and reference checks of check_paper.py;
+# options for one paper go in CHECK_ARGS_<paper>.
 
 # Check the build of paper $* in its build directory.
 CHECK = python3 check_paper.py "$(BUILD)/$*/$*.pdf" "$(BUILD)/$*/$*.log" $(CHECK_ARGS_$*)
@@ -29,14 +28,13 @@ $(OUTPUT)/%.pdf: %.tex Makefile check_paper.py
 # Allow e.g. `make uop-algebra.pdf`, keeping PDFs in output/pdf.
 $(TARGETS): %.pdf: $(OUTPUT)/%.pdf
 
-# Re-run the checks on every built paper, and the paper's worked examples.
+# Re-run the checks on every built paper.
 check: $(CHECKS)
-	python3 check_examples.py
 
 $(CHECKS): check-%: $(OUTPUT)/%.pdf
 	$(CHECK)
 
-# Render pages for visual inspection, e.g. `make render-exact-qop`.
+# Render pages for visual inspection, e.g. `make render-uop-algebra`.
 render: $(RENDERS)
 
 $(RENDERS): render-%: $(OUTPUT)/%.pdf

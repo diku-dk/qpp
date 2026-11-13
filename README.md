@@ -527,139 +527,6 @@ the module to `qpp/test/BackendValidation.hs`, which compares each backend it
 imports against the dense reference on random operators. The convention is
 spelled out in the header comment of `QPP.Semantics`.
 
-### Exact cyclotomic evaluation
-
-`QPP.Semantics.Exact.Matrix` constructs exact dense matrices;
-`QPP.Semantics.Exact.Statevector` applies the same `QOp` terms directly to
-amplitudes. Both use `QPP.Exact.Scalar` and the shared `QPP.Exact.State`
-representation. `QOp` and its `Rational` angles are unchanged.
-
-```haskell
-import QPP.Syntax (QOp(..))
-import QPP.Exact.Types
-import qualified QPP.Exact.Scalar as S
-import qualified QPP.Semantics.Exact.Statevector as E
-
-output = E.apply (E.evalOp (R H (1/3))) (E.ket [0])
-
--- Observation and linear algebra retain their checked scalar API.
-example = do
-  squaredNorm <- E.normSquared defaultLimits output
-  pure (E.amplitudes output, S.asRational squaredNorm)  -- norm squared = Just 1
-```
-
-Switch the qualified backend import to `QPP.Semantics.Exact.Matrix` to
-run the same example through dense evaluation. The ordinary `ket`, `evalOp`,
-`apply`, and `evalProg` signatures match the numerical backends and use
-`defaultLimits`. `ket` accepts `[Int]` containing only zeroes and ones;
-qubit 0 is the most significant bit. Failures raise errors with a call stack.
-Use `ketWithLimits`, `evalOpWithLimits`, `applyWithLimits`, and
-`evalProgWithLimits` for explicit limits and recoverable failures:
-these return `Result a = Either ExactError a`.
-
-`evalProg program input rng` preflights the whole program and supports
-`Unitary`, `Measure`, and `Initialize`, returning `(output, outcomes, remainingRng)`.
-The checked form is `evalProgWithLimits limits program input rng`.
-`evalStep` and `measure1` also have the conventional backend signatures and
-checked `WithLimits` variants. Step errors have zero-based indices; standalone
-`evalStepWithLimits` uses index zero. An empty program preserves its input and RNG.
-
-Measurement retains the **unnormalized projected vector**. For nonzero input
-`v`, outcome `b` has probability `normSquared (P_b v) / normSquared v`, and the
-stored output is `P_b v`. Normalizing this vector could leave the cyclotomic
-field. `amplitudes`, `inner`, `normSquared`, and `equal` still refer to the
-stored vector, not a normalized vector or an equivalence class of states.
-Use `E.probability limits state wire outcome` for a conditional probability;
-squared amplitudes alone are probabilities only when the stored norm is one.
-For example, measuring the Bell state can leave `[h,0,0,0]`, with `h=1/sqrt(2)`
-and squared norm `1/2`; measuring the same bit again returns zero with probability one.
-
-Each measurement consumes one finite RNG value in `[0,1)`, even for a certain
-outcome. The sampler treats that `Double` as its exact rational value and
-compares it with the exact probability using certified interval refinement;
-it never rounds a probability to `Double`. Threshold equality selects one.
-This retains the other backends' finite-precision RNG convention. `Measure ks`
-processes `reverse ks`, prepending outcomes so that the new block is in `ks`
-order. `Initialize ks values` measures those wires, applies X where the sample
-differs from the target, and hides its measurement outcomes while consuming RNG.
-Initialization wires must be distinct and match the number of target values.
-Empty wire lists are no-ops. A zero vector cannot be measured. Reset returns one
-sampled branch; averaging over its hidden outcomes can produce a mixed state.
-Hidden samples affect the stored squared norm; it need not equal the probability
-of the recorded outcomes.
-
-Statevector `evalOp` compiles gate constants once; `apply` reuses that plan
-or embeds its constants into a larger common field. Both backends share
-coefficient-buffer operations while retaining their own quantum shapes.
-The scalar-parameterized plan derives folds and traversals for checking and
-embedding its constants.
-
-To read the direct evaluator, start with `runPlan` in
-[`Exact/Statevector.hs`](src/QPP/Semantics/Exact/Statevector.hs): its cases
-give the action of each prepared operator on a vector.
-[`Internal/Vector.hs`](src/QPP/Exact/Internal/Vector.hs) implements the array
-operations, including the row/column algorithm for tensor application.
-[`Internal/Plan.hs`](src/QPP/Exact/Internal/Plan.hs) prepares exact constants,
-pushes adjoints to the leaves, and accounts for execution storage.
-
-The symbolic type checker validates each operator, including composite
-rotation axes. After full validation, zero-angle rotations become identities
-before field selection: unused axes cannot cause field growth. They accept
-any well-formed axis, as in `QPP.TypeCheck`. Every global phase is retained,
-including zero-qubit
-`Phase` terms and identity-axis rotations under control.
-
-The linear API provides `scale`, `add`, `sub`, `tensor`, `inner`,
-`normSquared`, and `equal`, along with `fromAmplitudes`, `amplitudes`,
-and checked `amplitude` access. Vectors need not be normalized. Matrix
-also provides `entry`, `entries`, `fromRows`, `addOp`, `scaleOp`,
-`composeOp`, `adjointOp`, `innerOp`, `normSquaredOp`, and `equalOp`.
-Its operator inner product is Frobenius; arbitrary matrix linear
-combinations need not be unitary. The existing numerical `HilbertSpace`
-class is unchanged: these checked operations do not require `Floating`,
-`Complex RealT`, square roots, or normalization.
-
-Scalars have private, reduced rational coordinates modulo the cyclotomic
-polynomial, with a distinguished complex embedding. Use `S.rational`,
-`S.rootOfUnity`, `S.phase`, or `S.fromCoordinates` to construct values;
-`S.add`, `S.mul`, `S.inverse`, `S.conjugate`, and `S.equal` perform checked
-exact arithmetic. Equality across fields promotes to a common field;
-resource exhaustion is an error, not inequality. `S.compareReal` orders real
-cyclotomic values with certified bounds and rejects nonreal inputs; exhausted
-comparison precision is also a resource error. There is no `Eq`, `Ord`, or
-`Floating` instance. `S.approximate` is a lossy observation function and
-is never used by evaluation, comparison, or zero tests.
-Inversion uses a normalized polynomial Euclidean algorithm: each nonzero
-remainder and its Bézout coefficient are divided by the remainder's leading
-coefficient together. This curbs avoidable intermediate coefficient growth.
-
-This prototype uses a dense power basis and one field per state/matrix.
-Field degree can grow independently of qubit count or entanglement:
-rotation denominators 101 and 103 give a sufficient field of degree
-40,800. `defaultLimits` bounds root indices at 4096, degree at 256,
-conservative coefficient-workspace estimates at 2,000,000 rational slots,
-and integer coefficients/intermediates at 4096 bits. These are explicit
-representation limits, not wall-time or heap-byte guarantees. Validation
-checks retained storage; operations separately reserve their temporary
-buffers. Empty programs and same-field equality need no arithmetic workspace.
-Direct evaluation counts retained plan constants separately from live vectors:
-sequential composition takes the maximum of the child workspace bounds, while
-rotations and tensor operations account for saved vectors. Subtraction combines
-coordinates directly, without allocating a negated input vector.
-Existing field contexts are reused, including when constructed under larger
-limits; their retained values must still fit the current limits. Cancellation
-may make an estimate larger than the ultimately needed result. Raise
-limits deliberately, or use smaller angle denominators. Sparse storage,
-cached embeddings, local fields, and field descent remain student-project
-directions; the prototype never substitutes a numerical approximation.
-
-Run `cabal run ExactEvaluation` for the phased-Bell example from the paper,
-including exact matrix/direct agreement, probabilities `3/4` and `1/4`
-after interference, and measurement followed by reset. Run `cabal test ExactTest` for the exact validation suite,
-including polynomial identities, larger-field inverses, embedding composition,
-and resource-boundary regressions. Random generators shrink failing examples
-while preserving field coordinates and quantum shapes.
-
 ## Compiler passes and analyses
 
 A compiler pass is a function `QOp -> QOp`. `QPP.Rewrite` contains the
@@ -688,7 +555,7 @@ git clone git@github.com:diku-dk/QPP.git
 cd QPP
 cabal build lib:qpp          # the library
 cabal build all              # library, exercises, problem sheets, test suites
-cabal test all               # the twelve test suites
+cabal test all               # the eleven test suites
 cabal run NoCloning          # a worked exercise
 cabal run QubitsProblem      # a weekly problem sheet
 cabal repl lib:qpp           # the library in GHCi
