@@ -78,11 +78,13 @@ evalOp op = case op of
             m = 0.5:+(-0.5)
         in (2><2) [p, m, m, p]   -- IBM-convention SX; matches MPS/SV. SX² = X.
 
-  R axis q -> 
-      let mat  = evalOp axis
-          theta = (realToFrac q * pi) :+ 0 -- Haskell won't multiply real and complex numbers
+  -- A rotation axis A is Hermitian as well as unitary, so A² = I and
+  -- exp(-iπq/2·A) = cos(πq/2)·I - i·sin(πq/2)·A. No matrix exponential is needed.
+  R axis q ->
+      let mat = evalOp axis
+          t   = realToFrac q * pi / 2
       in
-          matFunc exp ( (-ii*theta/2) .* mat )
+          (cos t :+ 0) .* ident (rows mat) .- (0 :+ sin t) .* mat
 
   Permute ks -> let
         n    = length ks

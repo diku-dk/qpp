@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Rotations have one formula in every backend
+
+`R a θ` evaluates to `cos t·I − i sin t·A`, with `t = πθ/2` and `A` the
+matrix of the axis `a`. For a Hermitian axis, such as a Pauli string or `H`,
+`A² = I` and this is `exp(−it·A)`, as before.
+
+| Backend | Before | Now |
+|---|---|---|
+| `QPP.Semantics.Matrix` | the matrix exponential `exp(−it·A)` | `cos t·I − i sin t·A` |
+| `QPP.Semantics.MPS` | for an axis `φ·P`, with `P` a Pauli string: `cos(tφ)·I − i sin(tφ)·P`, which is `exp(−it·A)` | `cos t·I − i sin t·φP` |
+
+The results differ only for an axis that is not Hermitian, such as
+`Phase q ⊗ X` with `q` not an integer. On such an axis the matrix and MPS
+backends gave `exp(−it·A)`, and the state-vector backend gave the formula,
+which is then a different matrix. All three now give the formula.
+
 ## 0.1.0.0 — QPP (2026-09)
 
 HQPlayground (the ATPL 2025/26 "HQP" framework, v3) becomes QPP, the Quantum

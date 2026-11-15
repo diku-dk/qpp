@@ -184,15 +184,12 @@ evalOpAt base op st = case op of
     | otherwise ->
         let t = pi * fromRational θ / 2
             (phi, pst, iSupp) = applyPauliString base axis st
-            -- The axis is φ·P with P a bare Pauli string, so (axis)² = φ²·I
-            -- and exp(−it·φP) = cos(tφ)·I − i·sin(tφ)·P — exact for any
-            -- complex φ (complex-argument cos/sin), matching QPP.Semantics.Matrix's
-            -- matrix exponential. For the meaningful axes φ = ±1 this reduces
-            -- to the familiar c·I − i·s·φ·P.
-            tphi = (t :+ 0) * phi
-            iC = 0 :+ 1
-            ψ1 = cos tphi .* st
-            ψ2 = ((-iC) * sin tphi) .* pst
+            -- The axis is A = φ·P with P a bare Pauli string. A rotation axis is
+            -- Hermitian (φ = ±1), so A² = I and exp(−it·A) = cos t·I − i·sin t·A.
+            -- QPP.Semantics.Matrix evaluates this same two-term formula, so the
+            -- two backends also agree when φ makes the axis non-Hermitian.
+            ψ1 = (cos t :+ 0) .* st
+            ψ2 = ((0 :+ (-sin t)) * phi) .* pst
         in writer (addLocal iSupp ψ1 ψ2)
 
   C a -> do

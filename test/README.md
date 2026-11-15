@@ -130,9 +130,11 @@ The current property suite has surfaced (and led to fixes for):
     inputs' centers; `swapSites` and `tensorMPS` not maintaining the
     center) — wrong *measurement probabilities* while the state vector
     itself stayed correct, so `BackendValidation` couldn't see it.
-12. `R` with a phase-carrying axis (`Phase q ⊗ P`, `q` non-integer) used
-    the two-term formula `c·I − i·s·φP`, which equals the matrix
-    exponential only when `φ² = 1`; MS and MPS disagreed.
+12. `R` with a phase-carrying axis (`Phase q ⊗ P`, `q` non-integer): MPS used
+    the two-term formula `c·I − i·s·φP` while MS took the matrix exponential.
+    The two agree only when `φ² = 1`, that is, for a Hermitian axis. Both
+    backends now use the two-term formula, the rotation identity for a
+    Hermitian axis.
 13. 1-qubit `R` rotations went through the LCU-plus-SVD path, breaking
     closure of the diagonal-core MPS class under 1-qubit gates
     (SamplingTest's "Closure under 1q + Permute + Phase").
