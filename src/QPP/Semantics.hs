@@ -37,8 +37,7 @@
 --   Backends also give their @OpT@ a @Convertible OpT CMat@ instance (see
 --   `Convertible` below), which is how the test suites compare them against
 --   the dense reference "QPP.Semantics.Matrix". This module additionally holds
---   `HasWork` (for backends whose working representation differs from the
---   stored one) and `SparseMat`.
+--   `SparseMat`.
 module QPP.Semantics where
 
 import QPP.Syntax
@@ -75,15 +74,6 @@ class Convertible a b where
 -- | TODO: 1) SparseMat t, 2) Useful functions for SparseMat
 data SparseMat = SparseMat ((Integer,Integer), [((Integer,Integer), ComplexT)])
    deriving (Show,Eq)
-
--- | Backends that compute in a different representation from the one they
---   store states in (e.g. a delayed array while working, a manifest one at
---   rest) provide the conversion pair here. `Work t` is the backend's working
---   representation for the stored type `t`.
-class HasWork t where
-  type Work t
-  toWork   :: t -> Work t
-  fromWork :: Work t -> t
 
 
 --------------------------------------------------------------------------------

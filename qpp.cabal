@@ -98,7 +98,6 @@ library
         mtl,
         array,
         containers,
-        massiv,
         vector,
         integer-logarithms,
         ieee754,
@@ -310,6 +309,12 @@ test-suite BackendValidation
   import: test-common
   type: exitcode-stdio-1.0
   main-is: BackendValidation.hs
+  other-modules: Generators
+
+test-suite StatevectorTest
+  import: test-common
+  type: exitcode-stdio-1.0
+  main-is: StatevectorTest.hs
   other-modules: Generators
 
 test-suite MatrixPrepTest

@@ -1,0 +1,220 @@
+Raw output of attic/StatevectorBench.hs, 2026-11-12. Apple M3 Max (14 cores), GHC 9.6.7, -O1.
+Columns: seconds for the massiv module (old), its replacement (new), their ratio, the matrix backend (up to 10 qubits),
+and the L1 difference of the two results (up to 14 qubits). '>limit' is a run stopped after 60 s.
+
+### sweep, single-threaded (+RTS -N1), Thu Nov 12 13:18:15 CET 2026
+
+== qft: QFT on n qubits  (seconds, limit 60 s) ==
+ param qubits        old        new    old/new     matrix  |old-new|
+     4      4     0.0001     0.0001        2.2     0.0005      0.0e0
+     6      6     0.0005     0.0001        3.8     0.0047      0.0e0
+     8      8     0.0025     0.0003        8.8     0.0916      0.0e0
+    10     10     0.0141     0.0010       14.4     2.0418      0.0e0
+    12     12     0.0782     0.0044       17.9                 0.0e0
+    14     14     0.4161     0.0255       16.3                 0.0e0
+    16     16     2.1350     0.1848       11.6            
+    18     18    10.7015     0.9746       11.0            
+    20     20    52.9279     5.9081        9.0            
+    22     22     >limit    46.5516                       
+
+== ghz: GHZ preparation on n qubits  (seconds, limit 60 s) ==
+ param qubits        old        new    old/new     matrix  |old-new|
+     4      4     0.0001     0.0000        2.4     0.0001      0.0e0
+     6      6     0.0001     0.0000        2.6     0.0010      0.0e0
+     8      8     0.0004     0.0001        5.9     0.0191      0.0e0
+    10     10     0.0017     0.0002        9.8     0.8213      0.0e0
+    12     12     0.0080     0.0007       11.3                 0.0e0
+    14     14     0.0360     0.0035       10.4                 0.0e0
+    16     16     0.1661     0.0172        9.6            
+    18     18     0.7562     0.1087        7.0            
+    20     20     3.3050     0.4724        7.0            
+    22     22    14.4571     3.4900        4.1            
+
+== trotter: Ising Trotter, 3 steps, n qubits  (seconds, limit 60 s) ==
+ param qubits        old        new    old/new     matrix  |old-new|
+     4      4     9.0492     0.0001    91405.7     0.0009      0.0e0
+     6      6     >limit     0.0002                0.0079 
+     8      8     >limit     0.0005                0.1640 
+    10     10     >limit     0.0017                4.4589 
+    12     12     >limit     0.0075                       
+    14     14     >limit     0.0345                       
+    16     16     >limit     0.1756                       
+    18     18     >limit     0.8973                       
+    20     20     >limit     4.4855                       
+
+== htensor: H (x) H (x) ... (x) H on n qubits  (seconds, limit 60 s) ==
+ param qubits        old        new    old/new     matrix  |old-new|
+     2      2     0.0000     0.0000        2.6     0.0000      0.0e0
+     4      4     0.0001     0.0000        2.4     0.0000      0.0e0
+     6      6     0.0004     0.0000       11.3     0.0001      0.0e0
+     8      8     0.0054     0.0001       71.9     0.0012      0.0e0
+    10     10     0.0829     0.0002      375.1     0.0302      0.0e0
+    12     12     1.3244     0.0009     1524.1                 0.0e0
+    14     14    21.1064     0.0036     5864.5                 0.0e0
+    16     16     >limit     0.0162                       
+    18     18     >limit     0.0823                       
+    20     20     >limit     0.4043                       
+    22     22     >limit     2.2937                       
+
+== hcomposed: one H per qubit, composed, n qubits  (seconds, limit 60 s) ==
+ param qubits        old        new    old/new     matrix  |old-new|
+     2      2     0.0000     0.0000        2.5     0.0000      0.0e0
+     4      4     0.0001     0.0000        3.1     0.0002      0.0e0
+     6      6     0.0008     0.0000       21.6     0.0019      0.0e0
+     8      8     0.0122     0.0001      160.1     0.0393      0.0e0
+    10     10     0.1849     0.0002      745.4     0.9409      0.0e0
+    12     12     2.9640     0.0010     3058.8                 0.0e0
+    14     14    47.6463     0.0042    11253.3                 0.0e0
+    16     16     >limit     0.0210                       
+    18     18     >limit     0.1108                       
+    20     20     >limit     0.5823                       
+    22     22     >limit     3.4155                       
+
+== rxlayer: one R X per qubit, composed, n qubits  (seconds, limit 60 s) ==
+ param qubits        old        new    old/new     matrix  |old-new|
+     2      2     0.0000     0.0000        2.4     0.0000      0.0e0
+     4      4     0.0001     0.0000        3.0     0.0002      0.0e0
+     6      6     0.0009     0.0000       20.4     0.0019      0.0e0
+     8      8     0.0127     0.0001      124.8     0.0412      0.0e0
+    10     10     0.1954     0.0003      664.7     0.9826      0.0e0
+    12     12     3.0307     0.0011     2691.6                 0.0e0
+    14     14    48.5518     0.0049     9900.5                 0.0e0
+    16     16     >limit     0.0244                       
+    18     18     >limit     0.1317                       
+    20     20     >limit     0.6638                       
+    22     22     >limit     4.1190                       
+
+== rzchain: m successive R Z on qubit 0 of 10 qubits  (seconds, limit 60 s) ==
+ param qubits        old        new    old/new     matrix  |old-new|
+     2     10     0.0004     0.0001        3.3     0.1085      0.0e0
+     4     10     0.0017     0.0002       11.3     0.2164      0.0e0
+     6     10     0.0068     0.0002       39.1     0.3322      0.0e0
+     8     10     0.0276     0.0002      123.6     0.4312      0.0e0
+    10     10     0.1099     0.0003      411.5     0.5511      0.0e0
+    12     10     0.4439     0.0003     1409.2     0.6608      0.0e0
+    14     10     1.7732     0.0004     4953.0     0.7961      0.0e0
+    16     10     7.1599     0.0004    19093.1     0.9131      0.0e0
+    18     10    28.3793     0.0005    61560.3     1.0031      0.0e0
+    20     10     >limit     0.0005                1.1196 
+    22     10     >limit     0.0005                1.2918 
+    24     10     >limit     0.0006                1.4028 
+    26     10     >limit     0.0007                1.5309 
+    28     10     >limit     0.0006                1.6427 
+    30     10     >limit     0.0008                1.7604 
+
+== bitrev: bit-reversal Permute on n qubits  (seconds, limit 60 s) ==
+ param qubits        old        new    old/new     matrix  |old-new|
+     4      4     0.0000     0.0000        1.6     0.0000      0.0e0
+     8      8     0.0001     0.0001        1.3     0.0031      0.0e0
+    12     12     0.0016     0.0006        2.8                 0.0e0
+    16     16     0.0239     0.0112        2.1            
+    20     20     0.5996     0.2187        2.7            
+    24     24    15.9259     4.3244        3.7            
+
+== toffolis: X with n-1 controls, after H on every qubit  (seconds, limit 60 s) ==
+ param qubits        old        new    old/new     matrix  |old-new|
+     4      4     0.0001     0.0000        3.1     0.0001      0.0e0
+     8      8     0.0054     0.0001       64.2     0.0032      0.0e0
+    12     12     1.3258     0.0009     1511.7                 0.0e0
+    16     16     >limit     0.0161                       
+    20     20     >limit     0.4026                       
+
+### programs, single-threaded
+
+== programs: GHZ, then Measure every qubit, then Initialize every qubit to 0  (seconds, limit 60 s) ==
+qubits        old        new    old/new   same outcomes
+     4     0.0002     0.0001        2.5   yes
+     8     0.0010     0.0006        1.7   yes
+    12     0.0164     0.0057        2.9   yes
+    16     0.3284     0.1403        2.3   yes
+    20     6.3275     3.6297        1.7   yes
+
+### small, single-threaded
+
+== small random operators (depth <= 4), each applied to |0...0>; total seconds for all of them ==
+qubits  count        old        new    old/new     matrix   max diff
+     1   2000     0.0380     0.0064        5.9     0.0128    3.3e-16
+     2   2000     0.0408     0.0128        3.2     0.0299    5.0e-16
+     3   2000     0.0451     0.0203        2.2     0.0599    4.4e-16
+     4   1000     0.0242     0.0137        1.8     0.0623    3.6e-16
+     5   1000     0.0310     0.0185        1.7     0.1508    2.5e-16
+     6    500     0.0213     0.0117        1.8     0.2301    3.4e-16
+     8    200     0.0303     0.0098        3.1     1.6091    2.5e-16
+
+== the same operators converted to their matrices with `to (evalOp op)`, as the test suites do ==
+qubits  count        old        new    old/new   max diff
+     2   1000     0.0783     0.0044       18.0    1.3e-15
+     4    500     0.1790     0.0119       15.0    2.4e-15
+     6    100     0.2990     0.0324        9.2    1.1e-14
+### done Thu Nov 12 13:32:58 CET 2026
+
+### memory of single runs (+RTS -s -N1)
+--- new qft 16 ---
+new qft 16:     0.1820 s
+       2,178,272 bytes maximum residency (49 sample(s))
+              21 MiB total memory in use (4 MiB lost due to fragmentation)
+--- old qft 16 ---
+old qft 16:     2.2210 s
+      63,174,240 bytes maximum residency (5 sample(s))
+             230 MiB total memory in use (106 MiB lost due to fragmentation)
+--- new qft 20 ---
+new qft 20:     5.8268 s
+      33,637,528 bytes maximum residency (369 sample(s))
+             109 MiB total memory in use (24 MiB lost due to fragmentation)
+--- new ghz 22 ---
+new ghz 22:     3.1062 s
+     100,737,904 bytes maximum residency (22 sample(s))
+             462 MiB total memory in use (127 MiB lost due to fragmentation)
+--- old ghz 22 ---
+old ghz 22:    14.6428 s
+     738,317,832 bytes maximum residency (6 sample(s))
+            1464 MiB total memory in use (0 MiB lost due to fragmentation)
+--- new bitrev 20 ---
+new bitrev 20:     0.2183 s
+      25,236,432 bytes maximum residency (8 sample(s))
+              66 MiB total memory in use (8 MiB lost due to fragmentation)
+--- old bitrev 20 ---
+old bitrev 20:     0.6176 s
+      16,811,968 bytes maximum residency (2 sample(s))
+              42 MiB total memory in use (0 MiB lost due to fragmentation)
+--- old qft 20 ---
+old qft 20:    54.3111 s
+   1,342,479,568 bytes maximum residency (9 sample(s))
+            3192 MiB total memory in use (0 MiB lost due to fragmentation)
+
+### old backend with all cores (+RTS -N14); the new one for reference
+
+== qft: QFT on n qubits  (seconds, limit 60 s) ==
+ param qubits        old        new    old/new     matrix  |old-new|
+     4      4     0.0003     0.0001        5.6     0.0005      0.0e0
+     6      6     0.0006     0.0001        5.2     0.0063      0.0e0
+     8      8     0.0032     0.0003       10.6     0.1354      0.0e0
+    10     10     0.0178     0.0014       12.5     2.3548      0.0e0
+    12     12     0.0996     0.0062       16.0                 0.0e0
+    14     14     0.5308     0.0354       15.0                 0.0e0
+    16     16     2.7772     0.2439       11.4            
+    18     18    14.0633     1.3388       10.5            
+    20     20     >limit     7.2368                       
+    22     22     >limit    37.5399                       
+
+== ghz: GHZ preparation on n qubits  (seconds, limit 60 s) ==
+ param qubits        old        new    old/new     matrix  |old-new|
+     4      4     0.0003     0.0000       10.6     0.0002      0.0e0
+     6      6     0.0006     0.0000       14.5     0.0016      0.0e0
+     8      8     0.0007     0.0001        6.2     0.0322      0.0e0
+    10     10     0.0024     0.0002       11.9     0.6588      0.0e0
+    12     12     0.0194     0.0009       21.6                 0.0e0
+    14     14     0.0445     0.0044       10.1                 0.0e0
+    16     16     0.1980     0.0232        8.5            
+    18     18     0.9161     0.1120        8.2            
+    20     20     3.9890     0.4925        8.1            
+    22     22    17.7249     2.9432        6.0            
+
+== programs: GHZ, then Measure every qubit, then Initialize every qubit to 0  (seconds, limit 60 s) ==
+qubits        old        new    old/new   same outcomes
+     4     0.0037     0.0001       33.9   yes
+     8     0.0136     0.0007       18.3   yes
+    12     0.0274     0.0102        2.7   yes
+    16     0.2818     0.2018        1.4   yes
+    20     8.9603     3.6784        2.4   yes
+### done Thu Nov 12 14:18:01 CET 2026

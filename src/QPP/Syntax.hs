@@ -13,7 +13,7 @@ import QPP.Util(permInvert, permSupport)
 --------------------------------------------------------------------------------
 -- Core syntax
 --------------------------------------------------------------------------------
-type Nat = Int
+type Nat = Int -- Constraint: n >= 0
 
 {-|
     The QOp type is a symbolic unitary operator, which just builds an abstract syntax tree (AST).

@@ -16,6 +16,7 @@ qualified import aliases used in the test files.
 | Suite | What it covers |
 |---|---|
 | `BackendValidation` | Cross-backend matrix equivalence (MS ↔ MPS ↔ SV), unitarity, adjoint involution, rotation algebra, permutation inverse. Has caught six MPS/SV bugs to date. |
+| `StatevectorTest` | The state-vector semantics on its own. Agreement with MS for every arity from 0 to 8 qubits: random expressions, further qubits carried along (`applyOp e ψ = (M(e) ⊗ I) ψ`), and every constructor in fixed positions. Each rule of the semantics as it is written, on the blocks and halves of a state, with no operator matrix. Linearity, norm, adjoints, shapes, several states at once. Programs against MS on a shared supply of samples, `measure1` against the amplitudes, `Initialize`. The worked examples of the lecture notes. |
 | `MPSTest` | MPS-internal invariants the cross-backend suites can't see: canonical-center validity (isometry check per site) after random ops/measurements, *binding* truncation (`approxCfg` with maxBond below the exact bond dimension), profiling stats, deterministic program-level oracle vs MS on a shared RNG, `R` with `Phase`/`Adjoint`-carrying axes. |
 | `MatrixPrepTest` | Pure helpers in `Programs.MatrixPreparation` (`toBitString`, `splitList`, `padToPowerOf2`); `buildRowQOp` row preparation; `matrixPrep` block encoding correctness and unitarity; three-backend agreement on prepared circuits. |
 | `SamplingTest` | `sampleAll` / `measure1` / diagonal-MPS sampling: determinism, index mapping, Born-rule agreement, cross-method and cross-backend histograms, truncation safety. |
@@ -41,8 +42,14 @@ qualified import aliases used in the test files.
 | `RandomQCirc` | A circuit on 1–4 wires with up to four gates, each on up to two distinct shuffled wires and a depth-1 payload of matching arity. Shrinks by dropping a gate or shrinking a payload. In `QCircTest`. |
 | `PermCirc` | A circuit on 2–4 wires mixing `Permute` gates on shuffled wire subsets with random one-qubit gates. Shrinks by dropping a gate. In `QCircTest`. |
 | `DiagCirc` | A circuit on 2–4 wires of composite diagonal gates (`genDiagonal`: phases, `Z`, rotations about `Z`/`Id 1` tensor axes, under controls, sums, products, compositions and adjoints) on two to four shuffled wires each. Shrinks by dropping a gate. In `QCircTest`. |
+| `genExpr n d`, `genHermitian n d` | `genExpr` is `genQOpAt` with rotations about any Hermitian axis. `genHermitian` makes the axes: Pauli strings, `H`, self-inverse permutations, and their tensors, controls, direct sums and conjugates `u† h u`. `shrinkExpr` drops the `shrinkQOp` candidates whose axes are no longer Hermitian. In `StatevectorTest`. |
+| `Applied` | An expression of 0–5 qubits with a column of amplitudes on up to 3 further qubits. Shrinks the further qubits, then the expression. In `StatevectorTest`. |
 
 QC budget: `QuickCheckTests 50`, `QuickCheckMaxSize 5` (4 in MatrixPrepTest).
+`StatevectorTest` sets a budget per group for the default of 100 tests and,
+unlike the other suites, scales with the command line:
+`cabal run StatevectorTest -- --quickcheck-tests 1000` runs ten times as many
+cases.
 The shrinkers are arity-preserving so the shrunk counterexample is still a
 valid input for the property. Every shrink candidate must also be strictly
 smaller than its input. Otherwise a failing property never finishes
@@ -63,6 +70,20 @@ group checks this against a size measure.
 | `R ax 2θ = (R ax θ)²` | Angle additivity. |
 | `R ax θ ∘ R ax (-θ) = I` | Rotation inverse. |
 | `Permute π ∘ π⁻¹ = Id` | Permutation inverse. |
+
+### `StatevectorTest`
+
+`S(e)` is `SV.applyOp e`, `M(e)` is `MS.evalOp e`, and a block is the part
+of a column in which the first qubits read a given value.
+
+| Group | Properties |
+|---|---|
+| Matrix semantics, 0 to 8 qubits | `to (SV.evalOp e) = M(e)` for random expressions of each arity 0 to 8. `S(e) ψ = (M(e) ⊗ I) ψ` for each arity `a` and each number `t` of further qubits with `a + t ≤ 8`. Fixed expressions at each size: every gate and rotation on every qubit, `C X` on every neighbouring pair, controls on all other qubits, qubit rotations and reversal, `qft` and its adjoint, a tensor product at every split, direct sums. |
+| The rules | One property per constructor, stated on the state alone: `Id`, `Phase`, a gate on the two halves, `Permute` moving block `b₀…bₙ₋₁` to `b_{k₀}…b_{kₙ₋₁}`, `R u θ = cos α ψ − i sin α S(u) ψ`, `C u` on the lower half, `u ⊗ v` as `S(v)` on each block and then `S(u)`, `u ⊕ v` on the halves, `u ∘ v`, `Adjoint u = S(dagger u)`. |
+| Algebra | `S(e)` is linear and keeps the norm; `S(Adjoint e)` undoes `S(e)`; `⟨φ, S(e) ψ⟩ = ⟨S(Adjoint e) φ, ψ⟩`; the result has the argument's shape and does not depend on it; several states side by side are transformed one by one; `to (from m) = m`; `apply` rejects a state of another size. |
+| The operator interface | On operators made from random matrices, `⊗`, `⊕`, `∘`, `adj`, `.*`, `.+`, `.-`, `inner` and `norm` give what they give on the matrices, also with a further qubit. The instances follow `applyOp`: `evalOp u ⊗ evalOp v = evalOp (u ⊗ v)`, and so for `⊕`, `∘` and `adj`. Chapter 2's line `evalOp (C X) ∘ (evalOp H ⊗ evalOp I)`; operators on different numbers of qubits are not composed. |
+| Programs and measurement | `evalProg` gives the outcomes, final state and remaining samples of MS on random programs of 1 to 8 qubits. `measure1` against the amplitudes: outcome 0 exactly when the sample lies below the probability of 0, and the normalised branch. Measuring twice repeats the outcome. The two projections of a qubit are complementary and idempotent. After `Initialize ks vs`, measuring `ks` gives `vs`; `Initialize` records no outcome and uses one sample per qubit. |
+| Worked examples | `H ⊗ C X` and `C X ⊗ H` on the amplitudes 1 to 8; `H ⊗ C X` on `|010⟩`; `Measure [2,0]` and `Initialize [2,0] [False,False]` on `(|000⟩ + |101⟩)/√2` with the samples 3/4, 1/4. |
 
 ### `MatrixPrepTest`
 
@@ -166,7 +187,8 @@ arbitrary combinations remain.
 
 **Norm and trace preservation**
 
-- `inner (apply U ψ) (apply U ψ) = inner ψ ψ` for unitary U
+- `inner (apply U ψ) (apply U ψ) = inner ψ ψ` for unitary U (covered for SV
+  by `StatevectorTest`; open for MPS)
 - `Tr(U M U†) = Tr(M)`
 - `|det U| = 1` for unitary U
 
@@ -174,7 +196,8 @@ arbitrary combinations remain.
 profile population, loose-truncation agreement with the dense reference).
 
 **Apply-path (state) properties** — useful once we want to test n > 4
-qubits where full-matrix materialisation is expensive.
+qubits where full-matrix materialisation is expensive. `StatevectorTest` now
+has these for SV, up to 8 qubits; they remain open for MPS.
 
 - `apply (Tensor a b) (ket bs) = (apply a (ket b_a)) ⊗ (apply b (ket b_b))`
 - `apply (Compose a b) ψ = apply a (apply b ψ)`
@@ -185,7 +208,8 @@ qubits where full-matrix materialisation is expensive.
 1. Decide where it lives: cross-backend / general → `BackendValidation`;
    algebraic identities and rewrite rules → `AlgebraTest`; matrix-prep
    specific → `MatrixPrepTest`; MPS internals → `MPSTest`; measurement and
-   sampling → `SamplingTest`; QFT → `QFTTest`.
+   sampling → `SamplingTest`; QFT → `QFTTest`; the state-vector semantics on
+   its own → `StatevectorTest`.
 2. Write the property as `forAll genQOpAt …` or against `RandomQOp` /
    `RandomMatrix` / `RandomVec` from the generators above.
 3. Match matrices via the `(~~)` operator (L1 diff < `tol`), or `eqMat` in

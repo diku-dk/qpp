@@ -506,7 +506,7 @@ evalProg :: Program -> StateT -> RNG -> (StateT, Outcomes, RNG)
 | Module | Representation |
 |---|---|
 | `QPP.Semantics.Matrix` | dense `hmatrix` matrices; the reference semantics |
-| `QPP.Semantics.Statevector` | `massiv` state vectors |
+| `QPP.Semantics.Statevector` | `hmatrix` state vectors; one rule per `QOp` constructor, applied to the amplitudes without forming an operator matrix larger than 2×2 |
 | `QPP.Semantics.MPS` | matrix product states with truncation |
 | `QPP.Semantics.Stabilizer` | empty; writing the stabilizer-tableau backend is a course exercise |
 
@@ -555,7 +555,7 @@ git clone git@github.com:diku-dk/QPP.git
 cd QPP
 cabal build lib:qpp          # the library
 cabal build all              # library, exercises, problem sheets, test suites
-cabal test all               # the eleven test suites
+cabal test all               # the twelve test suites
 cabal run NoCloning          # a worked exercise
 cabal run QubitsProblem      # a weekly problem sheet
 cabal repl lib:qpp           # the library in GHCi
@@ -574,6 +574,7 @@ qpp/
   solutions/         answer keys; not part of the cabal build
   test/              tasty/QuickCheck suites (see test/README.md)
   limbo/             parked designs and legacy code; not built
+  attic/             retired code, kept for reference; not built (see attic/README.md)
   CHANGELOG.md       HQPlayground → QPP module and symbol map
 docs/                notes on block encodings, QSVT and matrix inversion; design notes
 ```

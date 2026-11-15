@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### The state-vector backend is replaced
+
+`QPP.Semantics.Statevector` is a new module with the same backend names
+(`StateT`, `OpT`, `ket`, `evalOp`, `apply`, `measure1`, `evalStep`,
+`evalProg`). It defines the semantics by one rule per constructor of `QOp`,
+on `hmatrix`, in 176 lines against the 621 of the `massiv` module. Programs
+that only use the backend names need no change.
+
+| What | Before | Now |
+|---|---|---|
+| `StateT` | a `massiv` array | `CMat`, the state type of `QPP.Semantics.Matrix` |
+| Rotation axes | Pauli strings (with `Phase`, `Permute`, `∘`, `Adjoint`) | any Hermitian operator |
+| `OpT` | a closure with `n_qubits` only | also an `Operator` and a `HilbertSpace`: `<>`, `∘`, `⊗`, `⊕`, `adj`, `.*`, `.+`, `.-`, `inner`, `norm`. `adj`, `inner` and `norm` form the operator's matrix |
+| The `massiv` module | `src/QPP/Semantics/Statevector.hs` | `attic/StatevectorMassiv.hs`; not built |
+| `HasWork`, `toWork`, `fromWork` | in `QPP.Semantics`; used only by the `massiv` module | removed |
+| `massiv` | a dependency of the library | not needed |
+| Tests | cross-backend suites | those, and the new suite `StatevectorTest` |
+
 ### Rotations have one formula in every backend
 
 `R a θ` evaluates to `cos t·I − i sin t·A`, with `t = πθ/2` and `A` the
