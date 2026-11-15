@@ -32,23 +32,21 @@ eps = 1e-9
 
       (-1)^s i^c  (X^x_0 Z^z_0) (x) ... (x) (X^x_(n-1) Z^z_(n-1))
 
-    Bits are Bool (False = 0, True = 1). Note the X-before-Z ordering: it
-    is what makes the multiplication rule below a pure XOR plus one sign
-    bit, and it is why the phase bits s and c are needed at all.
+    Bits are of type `Bit` (0 and 1; + is XOR, * is AND). Note the
+    X-before-Z ordering: it is what makes the multiplication rule below a
+    pure XOR plus one sign bit, and it is why the phase bits s and c are
+    needed at all.
 -}
 data PauliCode = PauliCode
-  { signBit  :: Bool   -- ^ s
-  , phaseBit :: Bool   -- ^ c
-  , xBits    :: [Bool] -- ^ x_0 .. x_{n-1}
-  , zBits    :: [Bool] -- ^ z_0 .. z_{n-1}
+  { signBit  :: Bit   -- ^ s
+  , phaseBit :: Bit   -- ^ c
+  , xBits    :: [Bit] -- ^ x_0 .. x_{n-1}
+  , zBits    :: [Bit] -- ^ z_0 .. z_{n-1}
   } deriving (Eq, Show)
 
-xor :: Bool -> Bool -> Bool
-xor = (/=)
-
 -- | F2 inner product: the parity of the bitwise AND.
-dotF2 :: [Bool] -> [Bool] -> Bool
-dotF2 u v = foldr xor False (zipWith (&&) u v)
+dotF2 :: [Bit] -> [Bit] -> Bit
+dotF2 u v = sum (zipWith (*) u v)
 
 {-| Exercise 6: encode a single-qubit Pauli symbol into its (x,z) pair.
 
@@ -58,11 +56,11 @@ tracked in the phase bits. Nothing in Exercises 7-9 depends on it --
 commutation and rank ignore phases entirely -- but `pauliToQOp` at the end
 of Part A does have to get it right, and it does (see `symbolOp`).
 -}
-encodeSymbol :: Char -> (Bool, Bool)
-encodeSymbol 'I' = (False, False)
-encodeSymbol 'X' = (True,  False)
-encodeSymbol 'Z' = (False, True)
-encodeSymbol 'Y' = (True,  True)
+encodeSymbol :: Char -> (Bit, Bit)
+encodeSymbol 'I' = (0, 0)
+encodeSymbol 'X' = (1, 0)
+encodeSymbol 'Z' = (0, 1)
+encodeSymbol 'Y' = (1, 1)
 encodeSymbol c   = error ("encodeSymbol: not a Pauli symbol: " ++ [c])
 
 -- | Exercise 6: pretty-print a PauliCode as a signed tensor-product string.
@@ -71,12 +69,12 @@ decodePauli :: PauliCode -> String
 decodePauli (PauliCode s c xs zs) =
   signStr ++ phaseStr ++ concatWith " (x) " (map symbolOf (zip xs zs))
   where
-    signStr  = if s then "-" else ""
-    phaseStr = if c then "i * " else ""
-    symbolOf (False, False) = "I"
-    symbolOf (True,  False) = "X"
-    symbolOf (False, True)  = "Z"
-    symbolOf (True,  True)  = "Y"
+    signStr  = if s == 1 then "-" else ""
+    phaseStr = if c == 1 then "i * " else ""
+    symbolOf (0, 0) = "I"
+    symbolOf (1, 0) = "X"
+    symbolOf (0, 1) = "Z"
+    symbolOf _      = "Y"   -- (1, 1)
     concatWith sep = foldr1 (\a b -> a ++ sep ++ b)
 
 {-| Exercise 7: multiply two PauliCodes.
@@ -93,23 +91,23 @@ lone i factor either, so c stays 0.
 -}
 pauliMultiply :: PauliCode -> PauliCode -> PauliCode
 pauliMultiply (PauliCode s1 c1 x1 z1) (PauliCode s2 c2 x2 z2) =
-  PauliCode (s1 `xor` s2 `xor` dotF2 z1 x2)
-            (c1 `xor` c2)
-            (zipWith xor x1 x2)
-            (zipWith xor z1 z2)
+  PauliCode (s1 + s2 + dotF2 z1 x2)
+            (c1 + c2)
+            (zipWith (+) x1 x2)
+            (zipWith (+) z1 z2)
 
 {-| Exercise 8: the symplectic product, ignoring sign and phase:
 
     <(x1,z1),(x2,z2)> = x1 . z2 + z1 . x2  (mod 2)
 
 This is exactly the sign that survives when you compare P1 P2 against
-P2 P1 -- True means they ANTI-commute. -}
-symplecticProduct :: [Bool] -> [Bool] -> [Bool] -> [Bool] -> Bool
-symplecticProduct x1 z1 x2 z2 = dotF2 x1 z2 `xor` dotF2 z1 x2
+P2 P1 -- 1 means they ANTI-commute. -}
+symplecticProduct :: [Bit] -> [Bit] -> [Bit] -> [Bit] -> Bit
+symplecticProduct x1 z1 x2 z2 = dotF2 x1 z2 + dotF2 z1 x2
 
 -- | Exercise 8: do two Pauli strings commute?
 commutes :: PauliCode -> PauliCode -> Bool
-commutes p q = not (symplecticProduct (xBits p) (zBits p) (xBits q) (zBits q))
+commutes p q = symplecticProduct (xBits p) (zBits p) (xBits q) (zBits q) == 0
 
 {-| Exercise 9: rank over F2 by Gaussian elimination.
 
@@ -118,19 +116,19 @@ every row below that also has a 1, drop the column, recurse. A set of n
 generators on n qubits is independent -- and so pins down a stabilizer
 state -- exactly when the rank is n.
 -}
-rankF2 :: [[Bool]] -> Int
+rankF2 :: [[Bit]] -> Int
 rankF2 rows
   | null rows        = 0
   | null (head rows) = 0
-  | otherwise = case span (not . head) rows of
+  | otherwise = case span ((== 0) . head) rows of
       (_, [])              -> rankF2 (map tail rows)   -- column is all zero
       (zeroes, pivot:more) ->
           1 + rankF2 (map tail (zeroes ++ map (eliminate pivot) more))
   where
-    eliminate p r = if head r then zipWith xor p r else r
+    eliminate p r = if head r == 1 then zipWith (+) p r else r
 
 -- | The (x|z) row of a PauliCode, as `rankF2` wants it.
-checkRow :: PauliCode -> [Bool]
+checkRow :: PauliCode -> [Bit]
 checkRow p = xBits p ++ zBits p
 
 --------------------------------------------------------------------------
@@ -145,12 +143,12 @@ pauliToQOp (PauliCode s c xs zs)
   | otherwise = Phase (phaseOf s c) ⊗ foldr1 (⊗) (zipWith symbolOp xs zs)
   where
     -- (-1)^s i^c = e^{i pi (s + c/2)}
-    phaseOf a b = (if a then 1 else 0) + (if b then 1/2 else 0)
+    phaseOf a b = (if a == 1 then 1 else 0) + (if b == 1 then 1/2 else 0)
     symbolOp x z = case (x, z) of
-        (False, False) -> I
-        (True,  False) -> X
-        (False, True ) -> Z
-        (True,  True ) -> X ∘ Z
+        (0, 0) -> I
+        (1, 0) -> X
+        (0, 1) -> Z
+        _      -> X ∘ Z   -- (1, 1)
 
 -- | Do two n-qubit QOps act identically? Checked on every basis state.
 sameOp :: Int -> QOp -> QOp -> Bool
@@ -160,8 +158,8 @@ sameOp n a b = all agree [0 .. 2 ^ n - 1]
               in norm (apply (evalOp a) psi .- apply (evalOp b) psi) < eps
 
 -- | Big-endian bit list: `bitsOf 3 5 == [1,0,1]`.
-bitsOf :: Int -> Int -> [Int]
-bitsOf n x = [ (x `div` 2 ^ i) `mod` 2 | i <- [n-1, n-2 .. 0] ]
+bitsOf :: Int -> Int -> [Bit]
+bitsOf n x = [ fromIntegral ((x `div` 2 ^ i) `mod` 2) | i <- [n-1, n-2 .. 0] ]
 
 --------------------------------------------------------------------------
 -- PART B: verifying Clifford conjugation with QPP
@@ -191,8 +189,8 @@ main :: IO ()
 main = do
     putStrLn "-- Exercise 7: multiplying Pauli strings with the XOR rule --"
     -- (101|011) and (101|110): X (x) Z (x) XZ  and  XZ (x) Z (x) X
-    let p1 = PauliCode False False [True, False, True] [False, True, True]
-        p2 = PauliCode False False [True, False, True] [True,  True, False]
+    let p1 = PauliCode 0 0 [1, 0, 1] [0, 1, 1]
+        p2 = PauliCode 0 0 [1, 0, 1] [1, 1, 0]
 
     putStrLn $ "  P1       = " ++ decodePauli p1
     putStrLn $ "  P2       = " ++ decodePauli p2
@@ -212,9 +210,9 @@ main = do
 
     putStrLn "\n-- Exercise 9: independence --"
     let rows =
-          [ [True,  True,  False, False, False, True ]   -- P1 = (110|001)
-          , [False, True,  True,  True,  False, False]   -- P2 = (011|100)
-          , [True,  False, True,  True,  False, True ]   -- P3 = (101|101)
+          [ [1,1,0, 0,0,1]   -- P1 = (110|001)
+          , [0,1,1, 1,0,0]   -- P2 = (011|100)
+          , [1,0,1, 1,0,1]   -- P3 = (101|101)
           ]
     putStrLn $ "  rank = " ++ show (rankF2 rows) ++ " out of 3 rows on 3 qubits"
     putStrLn "  The rank is 2, not 3: row1 XOR row2 = row3, i.e. P3 = P1 P2 up to"

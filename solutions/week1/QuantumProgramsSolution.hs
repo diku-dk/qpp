@@ -58,7 +58,7 @@ bellProgram =
 {-| Measure qubit k of a 2-qubit state in the computational basis, returning
     the probability of outcome v together with the renormalized
     post-measurement state. -}
-measureQubit :: Int -> Int -> StateT -> (Double, StateT)
+measureQubit :: Int -> Bit -> StateT -> (Double, StateT)
 measureQubit k v psi =
     let branch = apply (measureProjection 2 k v) psi
     in  (realPart (inner psi branch), normalize branch)

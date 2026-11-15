@@ -421,16 +421,17 @@ A program is a list of steps:
 ```haskell
 data Step
   = Unitary QOp
-  | Initialize [Nat] [Bool]   -- set the given qubits to classical values
+  | Initialize [Nat] [Bit]    -- set the given qubits to classical values
   | Measure    [Nat]
 
 type Program  = [Step]
-type Outcomes = [Bool]        -- most recent first
+type Outcomes = [Bit]         -- most recent first
 type RNG      = [Double]      -- an infinite stream in [0,1)
 ```
 
-Measurement draws from a random stream that the caller supplies, so a run can
-be repeated exactly.
+`Bit` is the type of a classical bit: the literals `0` and `1`, with `+` and
+`*` modulo 2. Measurement draws from a random stream that the caller supplies,
+so a run can be repeated exactly.
 
 ## Example: the quantum Fourier transform
 
@@ -482,7 +483,7 @@ i *
   [0,0, 1,-1],
   [0,0,-1, 1]]
 
-[False,True,False]
+[0,1,0]
 ```
 
 The same `qft` is in `Programs.QFT`, where `Programs.QuantumAdder` builds
@@ -495,7 +496,7 @@ two types and six functions:
 
 ```haskell
 StateT, OpT                                          -- states and operators
-ket      :: [Int] -> StateT                          -- a computational-basis state
+ket      :: [Bit] -> StateT                          -- a computational-basis state
 evalOp   :: QOp -> OpT                               -- interpret a term
 apply    :: OpT -> StateT -> StateT
 measure1 :: (StateT, Outcomes, RNG) -> Nat -> (StateT, Outcomes, RNG)
@@ -555,7 +556,7 @@ git clone git@github.com:diku-dk/QPP.git
 cd QPP
 cabal build lib:qpp          # the library
 cabal build all              # library, exercises, problem sheets, test suites
-cabal test all               # the twelve test suites
+cabal test all               # the thirteen test suites
 cabal run NoCloning          # a worked exercise
 cabal run QubitsProblem      # a weekly problem sheet
 cabal repl lib:qpp           # the library in GHCi

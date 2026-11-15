@@ -1,13 +1,14 @@
 -- | Small, self-contained helpers: bit twiddling, integer logarithms,
 --   permutations, and a couple of fold/queue utilities.
 --
---   This module deliberately depends on nothing else in QPP (and in
---   particular not on "QPP.Syntax"), so that syntax and semantics modules can
---   import it freely. QOp-level analysis lives in "QPP.Syntax", the shared
---   backend interpreter in "QPP.Semantics", and the hmatrix block-splitting
---   helpers in "QPP.MPS" (their only consumer).
+--   This module deliberately depends on nothing else in QPP except "QPP.Bit"
+--   (and in particular not on "QPP.Syntax"), so that syntax and semantics
+--   modules can import it freely. QOp-level analysis lives in "QPP.Syntax", the
+--   shared backend interpreter in "QPP.Semantics", and the hmatrix
+--   block-splitting helpers in "QPP.MPS" (their only consumer).
 module QPP.Util where
 
+import QPP.Bit (Bit)
 import Data.Bits(FiniteBits,finiteBitSize,countLeadingZeros,shiftL)
 import Data.List (sort)
 import Math.NumberTheory.Logarithms (integerLog2')
@@ -19,20 +20,20 @@ import Control.Monad.ST (runST)
 
 -- Bit manipulation
 
-toBits :: (Integral a) => a -> [Int]
+toBits :: (Integral a) => a -> [Bit]
 toBits 0 = []
 toBits k = (toBits (k `div` 2)) ++ [fromIntegral (k `mod` 2)]
 
-toBits' :: Integral t => Int -> t -> [Int]
+toBits' :: Integral t => Int -> t -> [Bit]
 toBits' n k = let
     bits = toBits k
     m    = length bits
   in
     (replicate (n-m) 0) ++ bits
 
-fromBits :: [Int] -> Int
+fromBits :: [Bit] -> Int
 fromBits bs =
-        foldl (\acc b -> (acc `shiftL` 1) + b) 0 bs  -- MSB-first decode
+        foldl (\acc b -> (acc `shiftL` 1) + fromEnum b) 0 bs  -- MSB-first decode
 
 -- | Infinite list of powers of two, constructed with O(1) time per element
 powersOfTwo :: [Int]
@@ -41,9 +42,9 @@ powersOfTwo = iterate (*2) 1
 dotlists :: Num a => [a] -> [a] -> a
 dotlists xs ys = sum $ zipWith (*) xs ys
 
-bitIndexMSB, bitIndexLSB :: [Int] -> Int
-bitIndexMSB ks = dotlists (reverse ks) powersOfTwo
-bitIndexLSB ks = dotlists ks powersOfTwo
+bitIndexMSB, bitIndexLSB :: [Bit] -> Int
+bitIndexMSB ks = dotlists (map fromEnum (reverse ks)) powersOfTwo
+bitIndexLSB ks = dotlists (map fromEnum ks) powersOfTwo
 
 
 -- Integer logarithms and powers

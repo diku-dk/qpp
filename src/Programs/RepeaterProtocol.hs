@@ -60,11 +60,11 @@ repeater n sources targets | (length sources) == (length targets) =
       in
         --trace ("repeater " ++ show (n,sources,targets))
         [
-          Initialize (sources++targets) (replicate (2*l) False),
+          Initialize (sources++targets) (replicate (2*l) 0),
           Unitary u_pre,
           Measure meas,
           Unitary u_post,
-          Initialize (tail sources ++ init targets) (replicate (2*l-2) False)
+          Initialize (tail sources ++ init targets) (replicate (2*l-2) 0)
         ]
     | otherwise = error $ "length sources " ++ show sources ++ " != length targets " ++ show targets
 
@@ -102,7 +102,7 @@ multiqubitTeleport n message bell_sources bell_targets = let
       Unitary u_pre,
       Measure meas,
       Unitary u_post,
-      Initialize message (replicate (length message) False)
+      Initialize message (replicate (length message) 0)
     ]
 
 --------------------------------------------------------------------------------

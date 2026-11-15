@@ -49,7 +49,7 @@ data OpT = OpT { opQubits :: Int, runOp :: CMat -> CMat }
 
 instance HasQubits OpT where n_qubits = opQubits
 
-ket :: [Int] -> StateT
+ket :: [Bit] -> StateT
 ket = M.ket
 
 evalOp :: QOp -> OpT
@@ -151,9 +151,9 @@ instance HilbertSpace OpT where
   normalize u        = (1 / (norm u :+ 0)) .* u
 
 -- | The projection onto "qubit k reads c" is (I + (−1)^c Z_k) / 2.
-measureProjection :: Int -> Int -> Int -> OpT
+measureProjection :: Int -> Int -> Bit -> OpT
 measureProjection n k c = OpT n $ \ψ -> scale 0.5 (ψ + scale sign (zk ψ))
-  where sign = (-1) ^ c
+  where sign = (-1) ^ fromEnum c
         zk   = applyOp (k <@ Z @> (n-k-1))     -- Z on qubit k of n
 
 measure1 :: (StateT, Outcomes, RNG) -> Nat -> (StateT, Outcomes, RNG)
@@ -164,10 +164,10 @@ measure1 (state, outcomes, r:rng) k =
       s1      = apply (measureProjection n k 1) state
       prob0   = realPart (inner state s0)
       prob1   = realPart (inner state s1)
-      outcome = r >= prob0
+      outcome = Bit (r >= prob0)
   in if abs (prob0 + prob1 - 1) > tol
        then error $ "Probabilities don't sum to 1: " ++ show (prob0, prob1)
-       else (normalize (if outcome then s1 else s0), outcome : outcomes, rng)
+       else (normalize (if outcome == 1 then s1 else s0), outcome : outcomes, rng)
 
 evalStep :: (StateT, Outcomes, RNG) -> Step -> (StateT, Outcomes, RNG)
 evalStep = evalStepWith (apply . evalOp) measure1

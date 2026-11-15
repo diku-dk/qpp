@@ -36,6 +36,36 @@ The results differ only for an axis that is not Hermitian, such as
 backends gave `exp(−it·A)`, and the state-vector backend gave the formula,
 which is then a different matrix. All three now give the formula.
 
+### Classical bits have a type of their own
+
+`Bit` is the type of a classical bit. It is defined in the new module
+`QPP.Bit` and comes with `import QPP`. It replaces `Int` in `ket` and `Bool`
+in `Initialize` and in measurement outcomes. A bit is written `0` or `1` and
+prints that way. `+` and `*` on bits are arithmetic modulo 2, so `+` is
+exclusive or.
+
+| What | Before | Now |
+|---|---|---|
+| `ket` | `[Int] -> StateT`; `ket [0,2]` gave a wrong vector | `[Bit] -> StateT`; `ket [0,0,1]` is unchanged, `ket [0,2]` is the error "2 is not a bit" |
+| `Initialize` | `Initialize [0,2] [False,True]` | `Initialize [0,2] [0,1]` |
+| `Outcomes` | `[Bool]`, printed as `[False,True]` | `[Bit]`, printed as `[0,1]` |
+| A test on an outcome | `if b then …`, `bits == [True]` | `if b == 1 then …`, `bits == [1]` |
+| Exclusive or of two bits | `xor a b`, `a /= b` | `a + b` |
+| `measureProjection n k v` | `v :: Int` | `v :: Bit`; `measureProjection n k 0` is unchanged |
+| `toBits`, `toBits'`, `fromBits` in `QPP.Util` | lists of `Int` | lists of `Bit` |
+| Tests | | the new suite `BitTest` |
+
+To convert: `Bit (x > y)` makes a bit from a `Bool`, and the pattern `Bit b`
+gives the `Bool` back. `fromEnum b` is the `Int` 0 or 1, and `fromIntegral n`
+makes a bit from an integer that is 0 or 1. `Bit` is an instance of `NFData`,
+so `force` and `deepseq` work on outcomes as before; the library now depends
+on `deepseq` for that.
+
+The sum of a list of bits is its parity. To count the ones, write
+`length (filter (== 1) bits)`. GHC does not know that 0 and 1 are all the
+bits, so a function defined by the two cases `f 0` and `f 1` is reported as
+incomplete: write the second case as `f _`.
+
 ## 0.1.0.0 — QPP (2026-09)
 
 HQPlayground (the ATPL 2025/26 "HQP" framework, v3) becomes QPP, the Quantum

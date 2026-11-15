@@ -11,8 +11,9 @@ This exercise accompanies the "Stabilizers and the Clifford Group" problem
 sheet. It has two independent halves:
 
   PART A (Exercises 6-9 on paper): pure classical bit-vector arithmetic on
-  stabilizer tableaux. This does NOT use QPP -- it's plain Haskell, since
-  the check-matrix formalism is itself a classical data structure. Fill in
+  stabilizer tableaux. This uses nothing of QPP except its `Bit` type -- it's
+  plain Haskell, since the check-matrix formalism is itself a classical data
+  structure. Fill in
   `pauliMultiply`, `symplecticProduct`, `commutes`, and `rankF2`.
 
   PART B (Exercises 10-11 on paper): verifying Clifford conjugation
@@ -30,29 +31,26 @@ on the qubit above it, so there are no explicit qubit indices to pass.
 -}
 
 --------------------------------------------------------------------------
--- PART A: stabilizer tableaux as bit vectors (no QPP needed)
+-- PART A: stabilizer tableaux as bit vectors (of QPP, only `Bit` is needed)
 --------------------------------------------------------------------------
 
 -- | A Pauli group element on n qubits, encoded as (s, c, xs, zs):
 --   the operator is (-1)^s * i^c * X^(xs!!0) Z^(zs!!0) (x) ... (x) X^(xs!!(n-1)) Z^(zs!!(n-1))
---   Bits are represented as Bool (False = 0, True = 1).
+--   Bits are of type `Bit`: 0 and 1, with + (XOR) and * (AND) modulo 2.
 data PauliCode = PauliCode
-  { signBit  :: Bool   -- ^ s
-  , phaseBit :: Bool   -- ^ c
-  , xBits    :: [Bool] -- ^ x_0 .. x_{n-1}
-  , zBits    :: [Bool] -- ^ z_0 .. z_{n-1}
+  { signBit  :: Bit   -- ^ s
+  , phaseBit :: Bit   -- ^ c
+  , xBits    :: [Bit] -- ^ x_0 .. x_{n-1}
+  , zBits    :: [Bit] -- ^ z_0 .. z_{n-1}
   } deriving (Eq, Show)
-
-xor :: Bool -> Bool -> Bool
-xor = (/=)
 
 -- | Exercise 6: encode a single-qubit Pauli symbol into its (x,z) pair.
 --   [I] = (0,0), [Z] = (0,1), [X] = (1,0), [Y] = (1,1).
-encodeSymbol :: Char -> (Bool, Bool)
-encodeSymbol 'I' = (False, False)
-encodeSymbol 'X' = (True,  False)
-encodeSymbol 'Z' = (False, True)
-encodeSymbol 'Y' = (True,  True)   -- TODO: double check against Y = iXZ convention used in lecture
+encodeSymbol :: Char -> (Bit, Bit)
+encodeSymbol 'I' = (0, 0)
+encodeSymbol 'X' = (1, 0)
+encodeSymbol 'Z' = (0, 1)
+encodeSymbol 'Y' = (1, 1)   -- TODO: double check against Y = iXZ convention used in lecture
 encodeSymbol c   = error ("encodeSymbol: not a Pauli symbol: " ++ [c])
 
 -- | Exercise 6: pretty-print a PauliCode back as a signed tensor-product string,
@@ -61,12 +59,12 @@ decodePauli :: PauliCode -> String
 decodePauli (PauliCode s c xs zs) =
   signStr ++ phaseStr ++ concatWith " (x) " (map symbolOf (zip xs zs))
   where
-    signStr  = if s then "-" else ""
-    phaseStr = if c then "i * " else ""
-    symbolOf (False, False) = "I"
-    symbolOf (True,  False) = "X"
-    symbolOf (False, True)  = "Z"
-    symbolOf (True,  True)  = "Y"
+    signStr  = if s == 1 then "-" else ""
+    phaseStr = if c == 1 then "i * " else ""
+    symbolOf (0, 0) = "I"
+    symbolOf (1, 0) = "X"
+    symbolOf (0, 1) = "Z"
+    symbolOf _      = "Y"   -- (1, 1)
     concatWith sep = foldr1 (\a b -> a ++ sep ++ b)
 
 -- | Exercise 7: multiply two same-length PauliCodes using the XOR rule
@@ -82,26 +80,26 @@ pauliMultiply (PauliCode s1 c1 x1 z1) (PauliCode s2 c2 x2 z2) =
 
 -- | Exercise 8: the symplectic product of two same-length bit-vector pairs,
 --   ignoring sign/phase: <(x1,z1),(x2,z2)> = x1.z2 + z1.x2  (mod 2).
---   Returns True if the product is 1 (i.e. the operators ANTI-commute).
-symplecticProduct :: [Bool] -> [Bool] -> [Bool] -> [Bool] -> Bool
-symplecticProduct x1 z1 x2 z2 = False
+--   The product is 1 if the operators ANTI-commute.
+symplecticProduct :: [Bit] -> [Bit] -> [Bit] -> [Bit] -> Bit
+symplecticProduct x1 z1 x2 z2 = 0
   -- TODO: replace with the real computation, e.g.
-  --   foldr xor False (zipWith (&&) x1 z2) `xor` foldr xor False (zipWith (&&) z1 x2)
+  --   sum (zipWith (*) x1 z2) + sum (zipWith (*) z1 x2)
 
 -- | Exercise 8: do two Pauli strings commute? (Ignores overall phase, which
 --   never affects commutativity.)
 commutes :: PauliCode -> PauliCode -> Bool
-commutes p q = not (symplecticProduct (xBits p) (zBits p) (xBits q) (zBits q))
+commutes p q = symplecticProduct (xBits p) (zBits p) (xBits q) (zBits q) == 0
 
 -- | Exercise 9: rank of a list of (x|z) bit-vectors over F2, via Gaussian
 --   elimination mod 2. A set of n generators on n qubits is independent
 --   (and hence pins down a genuine stabilizer state, cf. Theorem 1 in the
 --   lecture) iff this rank equals n.
 --   TODO: implement Gaussian elimination over F2. A reasonable approach:
---     1. Represent each row as [Bool] (concatenation of xBits ++ zBits).
+--     1. Represent each row as [Bit] (concatenation of xBits ++ zBits).
 --     2. Repeatedly pick a pivot column, XOR it out of all other rows that
 --        have a 1 there, and recurse on the remaining rows/columns.
-rankF2 :: [[Bool]] -> Int
+rankF2 :: [[Bit]] -> Int
 rankF2 rows = length rows  -- TODO: WRONG on purpose -- replace with real rank computation
 
 --------------------------------------------------------------------------
@@ -135,8 +133,8 @@ main :: IO ()
 main = do
     putStrLn "-- Part A: tableau arithmetic (fill in pauliMultiply, symplecticProduct, rankF2) --"
 
-    let p1 = PauliCode False False [True, False, True] [False, True, True]   -- (110|011) placeholder, adjust to match paper Ex.7
-    let p2 = PauliCode False False [True, False, True] [True, True, False]
+    let p1 = PauliCode 0 0 [1, 0, 1] [0, 1, 1]   -- (101|011) placeholder, adjust to match paper Ex.7
+    let p2 = PauliCode 0 0 [1, 0, 1] [1, 1, 0]
 
     putStrLn $ "P1 = " ++ decodePauli p1
     putStrLn $ "P2 = " ++ decodePauli p2
@@ -145,9 +143,9 @@ main = do
 
     putStrLn "\n-- Exercise 9: independence check for the paper's P1,P2,P3 --"
     let rows =
-          [ [True,True,False, False,False,True]   -- P1 = (110|001)
-          , [False,True,True, True,False,False]   -- P2 = (011|100)
-          , [True,False,True, True,False,True]    -- P3 = (101|101)
+          [ [1,1,0, 0,0,1]   -- P1 = (110|001)
+          , [0,1,1, 1,0,0]   -- P2 = (011|100)
+          , [1,0,1, 1,0,1]   -- P3 = (101|101)
           ]
     putStrLn $ "rank = " ++ show (rankF2 rows) ++ " (should be 3 for independence, on 3 qubits)"
 

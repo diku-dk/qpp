@@ -525,15 +525,15 @@ genProgram q = do
 -- | Same outcomes, final state and remaining samples as the matrix backend.
 prop_program :: Int -> Property
 prop_program q =
-  forAll (vectorOf q (choose (0, 1))) $ \bits -> forAll (genProgram q) $ \prog ->
+  forAll (vectorOf q arbitrary) $ \bits -> forAll (genProgram q) $ \prog ->
   forAll (choose (1, 1000000)) $ \seed ->
     let (ψm, om, rm) = MS.evalProg prog (MS.ket bits) (samples seed)
         (ψs, os, rs) = SV.evalProg prog (SV.ket bits) (samples seed)
     in os === om .&&. ψs =~ ψm .&&. take 3 rs === take 3 rm
 
 -- | The amplitudes in which qubit k of q reads c, the others set to 0.
-keep :: Int -> Int -> Bool -> CMat -> CMat
-keep q k c ψ = column [ if testBit x (q - 1 - k) == c then z else 0
+keep :: Int -> Int -> Bit -> CMat -> CMat
+keep q k c ψ = column [ if Bit (testBit x (q - 1 - k)) == c then z else 0
                       | (x, z) <- zip [0 :: Int ..] (toList (flatten ψ)) ]
 
 -- | A state on 1 to 6 qubits and one of its qubits.
@@ -547,8 +547,8 @@ genMeasured = do
 prop_measure :: Property
 prop_measure =
   forAll genMeasured $ \(q, k, ψ) -> forAll (choose (0, 0.999999)) $ \r ->
-    let p0            = (\n -> n * n) (norm_2 (flatten (keep q k False ψ)))
-        c             = r >= p0
+    let p0            = (\n -> n * n) (norm_2 (flatten (keep q k 0 ψ)))
+        c             = Bit (r >= p0)
         branch        = keep q k c ψ
         expected      = scale (1 / (norm_2 (flatten branch) :+ 0)) branch
         (ψ', os, rest) = SV.measure1 (ψ, [], r : samples 1) k
@@ -568,8 +568,8 @@ prop_projections :: Property
 prop_projections =
   forAll genMeasured $ \(q, k, ψ) ->
     let p c = SV.apply (SV.measureProjection q k c)
-    in conjoin [ p 0 ψ =~ keep q k False ψ
-               , p 1 ψ =~ keep q k True ψ
+    in conjoin [ p 0 ψ =~ keep q k 0 ψ
+               , p 1 ψ =~ keep q k 1 ψ
                , p 0 ψ + p 1 ψ =~ ψ
                , p 0 (p 0 ψ) =~ p 0 ψ
                , p 1 (p 0 ψ) =~ scale 0 ψ ]
@@ -623,9 +623,9 @@ exampleTests = testGroup "Worked examples"
   , testCase "Measure [2,0] on (|000> + |101>)/√2 with samples 3/4, 1/4" $ do
       let (ψ, os, _) = SV.evalProg [Measure [2, 0]] start (3/4 : 1/4 : samples 1)
       assertClose "state" ψ (SV.ket [1, 0, 1])
-      os @?= [True, True]
-  , testCase "Initialize [2,0] [False,False] on the same state and samples" $ do
-      let (ψ, os, _) = SV.evalProg [Initialize [2, 0] [False, False]] start (3/4 : 1/4 : samples 1)
+      os @?= [1, 1]
+  , testCase "Initialize [2,0] [0,0] on the same state and samples" $ do
+      let (ψ, os, _) = SV.evalProg [Initialize [2, 0] [0, 0]] start (3/4 : 1/4 : samples 1)
       assertClose "state" ψ (SV.ket [0, 0, 0])
       os @?= []
     -- Chapter 2's check of the Deutsch program, by its four oracles. The
@@ -634,7 +634,7 @@ exampleTests = testGroup "Worked examples"
   , testCase "Deutsch: the measured bit is f(0) ⊕ f(1), for the samples 0.0 and 0.999" $
       sequence_
         [ assertEqual (showOp oracle ++ ", sample " ++ show r) [balanced] os
-        | (oracle, balanced) <- [(Id 2, False), (Id 1 ⊗ X, False), (C X, True), ((Id 1 ⊗ X) ∘ C X, True)]
+        | (oracle, balanced) <- [(Id 2, 0), (Id 1 ⊗ X, 0), (C X, 1), ((Id 1 ⊗ X) ∘ C X, 1)]
         , r <- [0.0, 0.999]
         , let (_, os, _) = SV.evalProg [Unitary ((H ⊗ H) >: oracle >: (H ⊗ Id 1)), Measure [0]]
                                        (SV.ket [0, 1]) (repeat r) ]

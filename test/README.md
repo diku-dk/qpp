@@ -17,6 +17,7 @@ qualified import aliases used in the test files.
 |---|---|
 | `BackendValidation` | Cross-backend matrix equivalence (MS ↔ MPS ↔ SV), unitarity, adjoint involution, rotation algebra, permutation inverse. Has caught six MPS/SV bugs to date. |
 | `StatevectorTest` | The state-vector semantics on its own. Agreement with MS for every arity from 0 to 8 qubits: random expressions, further qubits carried along (`applyOp e ψ = (M(e) ⊗ I) ψ`), and every constructor in fixed positions. Each rule of the semantics as it is written, on the blocks and halves of a state, with no operator matrix. Linearity, norm, adjoints, shapes, several states at once. Programs against MS on a shared supply of samples, `measure1` against the amplitudes, `Initialize`. The worked examples of the lecture notes. |
+| `BitTest` | The classical bit `Bit` (`QPP.Bit`): `+` and `*` modulo 2, printing as 0 and 1, the conversions from `Bool` and `Int` and to `Int`, the error for a number that is not a bit (including `ket [0,2]`), and the sum of a list of bits as its parity. |
 | `MPSTest` | MPS-internal invariants the cross-backend suites can't see: canonical-center validity (isometry check per site) after random ops/measurements, *binding* truncation (`approxCfg` with maxBond below the exact bond dimension), profiling stats, deterministic program-level oracle vs MS on a shared RNG, `R` with `Phase`/`Adjoint`-carrying axes. |
 | `MatrixPrepTest` | Pure helpers in `Programs.MatrixPreparation` (`toBitString`, `splitList`, `padToPowerOf2`); `buildRowQOp` row preparation; `matrixPrep` block encoding correctness and unitarity; three-backend agreement on prepared circuits. |
 | `SamplingTest` | `sampleAll` / `measure1` / diagonal-MPS sampling: determinism, index mapping, Born-rule agreement, cross-method and cross-backend histograms, truncation safety. |
@@ -38,6 +39,7 @@ qualified import aliases used in the test files.
 | `genPauli n` | An `n`-qubit Pauli string (tensor of `Id 1`/`X`/`Y`/`Z`). Used as `R` axis. |
 | `genPermutation n` | A permutation of `[0..n-1]`, via QuickCheck's `shuffle`. |
 | `genRat` | A rational in `[-7,7]/[1,8]`. |
+| `Arbitrary Bit` | A bit, 0 or 1. Shrinks from 1 to 0. |
 | `RandomVec`, `RandomMatrix` | Random complex vectors / square matrices (small integer entries). In `MatrixPrepTest`. |
 | `RandomQCirc` | A circuit on 1–4 wires with up to four gates, each on up to two distinct shuffled wires and a depth-1 payload of matching arity. Shrinks by dropping a gate or shrinking a payload. In `QCircTest`. |
 | `PermCirc` | A circuit on 2–4 wires mixing `Permute` gates on shuffled wire subsets with random one-qubit gates. Shrinks by dropping a gate. In `QCircTest`. |
@@ -83,7 +85,7 @@ of a column in which the first qubits read a given value.
 | Algebra | `S(e)` is linear and keeps the norm; `S(Adjoint e)` undoes `S(e)`; `⟨φ, S(e) ψ⟩ = ⟨S(Adjoint e) φ, ψ⟩`; the result has the argument's shape and does not depend on it; several states side by side are transformed one by one; `to (from m) = m`; `apply` rejects a state of another size. |
 | The operator interface | On operators made from random matrices, `⊗`, `⊕`, `∘`, `adj`, `.*`, `.+`, `.-`, `inner` and `norm` give what they give on the matrices, also with a further qubit. The instances follow `applyOp`: `evalOp u ⊗ evalOp v = evalOp (u ⊗ v)`, and so for `⊕`, `∘` and `adj`. Chapter 2's line `evalOp (C X) ∘ (evalOp H ⊗ evalOp I)`; operators on different numbers of qubits are not composed. |
 | Programs and measurement | `evalProg` gives the outcomes, final state and remaining samples of MS on random programs of 1 to 8 qubits. `measure1` against the amplitudes: outcome 0 exactly when the sample lies below the probability of 0, and the normalised branch. Measuring twice repeats the outcome. The two projections of a qubit are complementary and idempotent. After `Initialize ks vs`, measuring `ks` gives `vs`; `Initialize` records no outcome and uses one sample per qubit. |
-| Worked examples | `H ⊗ C X` and `C X ⊗ H` on the amplitudes 1 to 8; `H ⊗ C X` on `|010⟩`; `Measure [2,0]` and `Initialize [2,0] [False,False]` on `(|000⟩ + |101⟩)/√2` with the samples 3/4, 1/4. |
+| Worked examples | `H ⊗ C X` and `C X ⊗ H` on the amplitudes 1 to 8; `H ⊗ C X` on `|010⟩`; `Measure [2,0]` and `Initialize [2,0] [0,0]` on `(|000⟩ + |101⟩)/√2` with the samples 3/4, 1/4. |
 
 ### `MatrixPrepTest`
 

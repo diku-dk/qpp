@@ -168,9 +168,9 @@ sampleDiagMPS dm rng0
     sV = dSites dm
     n  = V.length sV
     step :: V.Vector CMat
-         -> (CVec, RNG, [Bool])
+         -> (CVec, RNG, [Bit])
          -> Int
-         -> (CVec, RNG, [Bool])
+         -> (CVec, RNG, [Bit])
     step _ (_, [], _) _ = error "sampleDiagMPS: empty RNG"
     step rChain (l, r:rs, acc) p =
       let DiagSite f0 f1 = sV ! p
@@ -184,7 +184,7 @@ sampleDiagMPS dm rng0
            then error "sampleDiagMPS: prob ~ 0"
            else let bit = r * tot >= w0
                     l'  = if bit then h1 else h0
-                in (l', rs, bit : acc)
+                in (l', rs, Bit bit : acc)
 
 -- | Projective measure-all on a DiagMPS. Returns a new DiagMPS whose
 --   `dScalar` is set to 1/|⟨s|ψ_internal⟩|, so the result has unit norm
@@ -209,9 +209,9 @@ measureDiagMPS dm rng0
     n  = V.length sV
     step :: V.Vector CMat
          -> CVec
-         -> (CVec, RNG, [Bool], [(Int, DiagSite)])
+         -> (CVec, RNG, [Bit], [(Int, DiagSite)])
          -> Int
-         -> (CVec, RNG, [Bool], [(Int, DiagSite)])
+         -> (CVec, RNG, [Bit], [(Int, DiagSite)])
     step _ _ (_, [], _, _) _ = error "measureDiagMPS: empty RNG"
     step rChain zerof (l, r:rs, acc, upd) p =
       let DiagSite f0 f1 = sV ! p
@@ -226,7 +226,7 @@ measureDiagMPS dm rng0
            else let bit = r * tot >= w0
                     l'  = if bit then h1 else h0
                     s'  = if bit then DiagSite zerof f1 else DiagSite f0 zerof
-                in (l', rs, bit : acc, (p, s') : upd)
+                in (l', rs, Bit bit : acc, (p, s') : upd)
 
 -- | Sample-only all-qubit measurement on a diagonal MPS state. Asserts
 --   diagonality; outcomes returned in logical-qubit order.
@@ -235,7 +235,7 @@ sampleAllDiag psi rng =
   let dm               = toDiagMPS psi
       (physOuts, rng') = sampleDiagMPS dm rng
       n                = nSites psi
-      bits = V.replicate n False //
+      bits = V.replicate n 0 //
                [ (phys2log psi ! p, b) | (p, b) <- zip [0..] physOuts ]
       outs = [ bits ! k | k <- [0 .. n-1] ]
   in (outs, rng')
@@ -249,8 +249,8 @@ measureAllDiag psi rng =
   let dm                 = toDiagMPS psi
       (_, physOuts, rng') = measureDiagMPS dm rng
       n    = nSites psi
-      bits = V.replicate n False //
+      bits = V.replicate n 0 //
                [ (phys2log psi ! p, b) | (p, b) <- zip [0..] physOuts ]
       outs = [ bits ! k | k <- [0 .. n-1] ]
-      psi' = (ket (map fromEnum outs)) { cfg = cfg psi }
+      psi' = (ket outs) { cfg = cfg psi }
   in (psi', outs, rng')

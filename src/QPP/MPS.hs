@@ -209,7 +209,7 @@ instance Monoid Profile where
 
 -- | Basis ket (logical MSB-first). All sites are 1×1 and norm 1, so any
 --   center position is valid.
-ket :: [Int] -> MPS
+ket :: [Bit] -> MPS
 ket bs =
   let n = length bs
       mk b = let v0 = if b==0 then 1:+0 else 0:+0
@@ -617,19 +617,19 @@ frob2 x =
   in realPart $ dot v v -- Hmatrix conjugates left argument to dot
 
 -- | Move the center to physical site p and project it there.
-projectCtrl :: Int -> Bool -> MPS -> (MPS, Profile)
-projectCtrl p one m =
+projectCtrl :: Int -> Bit -> MPS -> (MPS, Profile)
+projectCtrl p b m =
   let (m', prof) = moveCenterToPhys p m
-  in (projectCenter p one m', prof)
+  in (projectCenter p b m', prof)
 
--- | Project the *center* site to |b> (b=False => |0>, True => |1>).
+-- | Project the *center* site to |b>.
 --   Produces an *unnormalized* post-measurement state. Zeroing one physical
 --   branch of the center site leaves all other sites' isometries untouched,
 --   so the center stays valid.
-projectCenter :: Int -> Bool -> MPS -> MPS
+projectCenter :: Int -> Bit -> MPS -> MPS
 projectCenter p b st =
   let Site x0 x1 = sites st ! p
-      (y0,y1)    = if b then (zeros_like x0, x1) else (x0, zeros_like x1)
+      (y0,y1)    = if b == 1 then (zeros_like x0, x1) else (x0, zeros_like x1)
   in st { sites = sites st // [(p, Site y0 y1)] }
 
 zeros_like :: CMat -> CMat
@@ -658,7 +658,7 @@ measure1Profiled (st, outs, u:us) k =
          y0   = if b then zeros_like x0 else inv .* x0
          y1   = if b then inv .* x1 else zeros_like x1
          st2  = st1 { sites = sites st1 // [(p, Site y0 y1)] }
-     in ((st2, b:outs, us), prof)
+     in ((st2, Bit b : outs, us), prof)
 measure1Profiled (_,_,[]) _ = error "measure1: empty RNG"
 
 -- | Sample a computational-basis outcome for *every* qubit without producing a
@@ -681,7 +681,7 @@ sampleAll psi rng0
           vInit = H.flatten bEnd
           (_v,   rng2, leftPairs)  =
             foldl' leftStep  (vInit, rng1, []) [c-1, c-2 .. 0]
-          bits = V.replicate n False // (rightPairs ++ leftPairs)
+          bits = V.replicate n 0 // (rightPairs ++ leftPairs)
           outs = [ bits ! k | k <- [0 .. n-1] ]
       in (outs, rng2)
   where
@@ -689,8 +689,8 @@ sampleAll psi rng0
     c     = center_site psi
     tolP  = tol (cfg psi)
 
-    rightStep :: (CMat, RNG, [(Int,Bool)]) -> Int
-              -> (CMat, RNG, [(Int,Bool)])
+    rightStep :: (CMat, RNG, [(Int,Bit)]) -> Int
+              -> (CMat, RNG, [(Int,Bit)])
     rightStep (_, [], _)     _ = error "sampleAll: empty RNG"
     rightStep (b, r:rs, acc) p =
       let Site x0 x1 = sites psi ! p
@@ -704,10 +704,10 @@ sampleAll psi rng0
            else let bit = r * tot >= w0
                     b'  = if bit then m1 else m0
                     q   = phys2log psi ! p
-                in (b', rs, (q, bit) : acc)
+                in (b', rs, (q, Bit bit) : acc)
 
-    leftStep :: (CVec, RNG, [(Int,Bool)]) -> Int
-             -> (CVec, RNG, [(Int,Bool)])
+    leftStep :: (CVec, RNG, [(Int,Bit)]) -> Int
+             -> (CVec, RNG, [(Int,Bit)])
     leftStep (_, [], _)     _ = error "sampleAll: empty RNG"
     leftStep (v, r:rs, acc) p =
       let Site x0 x1 = sites psi ! p
@@ -721,7 +721,7 @@ sampleAll psi rng0
            else let bit = r * tot >= w0
                     v'  = if bit then u1 else u0
                     q   = phys2log psi ! p
-                in (v', rs, (q, bit) : acc)
+                in (v', rs, (q, Bit bit) : acc)
 
 -- Helper functions for MPS
 bondDimensions :: MPS -> V.Vector Int

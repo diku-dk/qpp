@@ -42,7 +42,7 @@ Rotation angles are `Rational` numbers in units of pi throughout, so
 
 -- | Prepare |b1..bn> from |00..0> using X on exactly the qubits with
 -- b_k = 1. `bits` is e.g. [1,0,1] for |101>.
-prepareBasisState :: [Int] -> QOp
+prepareBasisState :: [Bit] -> QOp
 prepareBasisState bits = I -- TODO: build via `Tensor`, folding X/I according to `bits`
 
 -- | A hand-built 2-qubit real-amplitude state-prep circuit:

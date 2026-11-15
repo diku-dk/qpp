@@ -18,6 +18,7 @@
 module Main where
 
 import QPP
+import QPP.Util (fromBits)
 import qualified QPP.Semantics.Matrix      as MS
 import qualified QPP.Semantics.MPS         as MPS
 import QPP.Semantics.MPS (sampleAll)
@@ -42,8 +43,8 @@ import Control.Monad (replicateM)
 ------------------------------------------------------------------------
 
 -- | MSB-first bitstring -> integer index, matching `mpsToDenseVec`'s convention.
-bitsToIdx :: [Bool] -> Int
-bitsToIdx = foldl' (\acc b -> 2*acc + (if b then 1 else 0)) 0
+bitsToIdx :: [Bit] -> Int
+bitsToIdx = fromBits
 
 -- | Run a Program on the given state with a fixed RNG, discard outcomes/RNG.
 runProg :: Program -> MPS.StateT -> MPS.StateT
@@ -158,15 +159,14 @@ qftProg n = [ Unitary (qft n) ]
 -- Determinism on product kets
 ------------------------------------------------------------------------
 
-determinismCase :: String -> [Int] -> TestTree
+determinismCase :: String -> [Bit] -> TestTree
 determinismCase lbl bs = testCase lbl $ do
-  let st       = MPS.ket bs
-      expected = [ b == 1 | b <- bs ]
+  let st   = MPS.ket bs
       runs = [ (seed, fst (sampleAll st (randoms (mkStdGen seed) :: [Double])))
              | seed <- [1, 137, 9999, -7, 0] ]
   mapM_ (\(seed, outs) ->
            assertEqual ("ket " ++ show bs ++ " seed=" ++ show seed)
-                       expected outs)
+                       bs outs)
         runs
 
 determinismTests :: TestTree
@@ -186,7 +186,7 @@ determinismTests = testGroup "Determinism on product kets"
 -- `Permute` updates only log2phys; physical sites stay put with original bits.
 -- Sampling reads through phys2log, so logical-qubit-k's outcome must be the
 -- bit that ended up at logical k after the permutation.
-permuteCase :: String -> [Int] -> [Int] -> [Bool] -> TestTree
+permuteCase :: String -> [Bit] -> [Int] -> [Bit] -> TestTree
 permuteCase lbl bs perm expected = testCase lbl $ do
   let st   = runProg [ Unitary (Permute perm) ] (MPS.ket bs)
       runs = [ fst (sampleAll st (randoms (mkStdGen seed) :: [Double]))
@@ -196,20 +196,20 @@ permuteCase lbl bs perm expected = testCase lbl $ do
 permuteTests :: TestTree
 permuteTests = testGroup "Logical/physical index mapping"
   [ permuteCase "Permute [1,0] · |01>"
-                [0,1] [1,0] [True, False]
+                [0,1] [1,0] [1,0]
   , permuteCase "Permute [1,0] · |10>"
-                [1,0] [1,0] [False, True]
+                [1,0] [1,0] [0,1]
   , permuteCase "Permute [2,0,1] · |011>"
-                [0,1,1] [2,0,1] [True, False, True]
+                [0,1,1] [2,0,1] [1,0,1]
   , permuteCase "Permute [2,1,0] · |100>"
-                [1,0,0] [2,1,0] [False, False, True]
+                [1,0,0] [2,1,0] [0,0,1]
   , -- Double permute test: composing two permutations should still yield a
     -- product state with deterministic outcomes equal to the composed remap.
     testCase "Permute [1,0] ∘ Permute [1,0] · |01> = |01>" $ do
       let prog = [ Unitary (Permute [1,0]), Unitary (Permute [1,0]) ]
           st   = runProg prog (MPS.ket [0,1])
           outs = fst (sampleAll st (randoms (mkStdGen 42) :: [Double]))
-      assertEqual "double swap is identity" [False, True] outs
+      assertEqual "double swap is identity" [0, 1] outs
   ]
 
 ------------------------------------------------------------------------
@@ -220,11 +220,11 @@ edgeTests :: TestTree
 edgeTests = testGroup "Edge sizes / center positions"
   [ testCase "n=1: |0>" $ do
       let (outs, _) = sampleAll (MPS.ket [0]) (randoms (mkStdGen 9) :: [Double])
-      assertEqual "|0> -> [False]" [False] outs
+      assertEqual "|0> -> [0]" [0] outs
 
   , testCase "n=1: |1>" $ do
       let (outs, _) = sampleAll (MPS.ket [1]) (randoms (mkStdGen 9) :: [Double])
-      assertEqual "|1> -> [True]" [True] outs
+      assertEqual "|1> -> [1]" [1] outs
 
   , testCase "n=1: H|0> ~ 50/50" $ do
       let st   = runProg [Unitary H] (MPS.ket [0])

@@ -129,9 +129,9 @@ supportInterval st base op =
 
 -- | Projection onto qubit k = out, as an operator. Unlike `measure1` the
 --   result is *not* renormalized.
-measureProjection :: HasCallStack => Int -> Int -> Int -> OpT
+measureProjection :: HasCallStack => Int -> Int -> Bit -> OpT
 measureProjection arity k out = OpT arity $ \st ->
-  projectCtrl (log2phys st ! k) (out==1) st
+  projectCtrl (log2phys st ! k) out st
 
 -- | Materialize an `OpT` as a dense matrix by applying it to each canonical basis ket
 --   prepared with the given EvalCfg, then assembling the resulting column vectors. The cfg
@@ -199,8 +199,8 @@ evalOpAt base op st = case op of
                    then ctrlIv                          -- empty support: stay at control bit
                    else supportInterval st (base+1) a
         iHull  = hull ctrlIv iA
-    psi0 <- writer (projectCtrl ctrlP False st)
-    psi1 <- writer (projectCtrl ctrlP True st) >>= evalOpAt (base+1) a
+    psi0 <- writer (projectCtrl ctrlP 0 st)
+    psi1 <- writer (projectCtrl ctrlP 1 st) >>= evalOpAt (base+1) a
     writer (addLocal iHull psi0 psi1)
 
   DirectSum a b -> do
@@ -209,8 +209,8 @@ evalOpAt base op st = case op of
         iA     = if S.null (op_support a) then ctrlIv else supportInterval st (base+1) a
         iB     = if S.null (op_support b) then ctrlIv else supportInterval st (base+1) b
         iHull  = hull ctrlIv (hull iA iB)
-    psi0 <- writer (projectCtrl ctrlP False st) >>= evalOpAt (base+1) a
-    psi1 <- writer (projectCtrl ctrlP True  st) >>= evalOpAt (base+1) b
+    psi0 <- writer (projectCtrl ctrlP 0 st) >>= evalOpAt (base+1) a
+    psi1 <- writer (projectCtrl ctrlP 1 st) >>= evalOpAt (base+1) b
     writer (addLocal iHull psi0 psi1)
 
 -- Steps / programs: shared interpreter from QPP.Semantics.

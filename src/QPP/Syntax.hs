@@ -4,11 +4,15 @@
 --
 --   Nothing here evaluates anything: semantics live in "QPP.Semantics" and
 --   the backend modules below it, rewriting in "QPP.Rewrite".
-module QPP.Syntax where
+--
+--   `Bit`, the classical bit of `Initialize` and `Outcomes`, is defined in
+--   "QPP.Bit" and re-exported from here.
+module QPP.Syntax (module QPP.Syntax, module QPP.Bit) where
 import Data.Complex
 import Data.Bits(shiftL)
 import qualified Data.Set as S
 import QPP.Util(permInvert, permSupport)
+import QPP.Bit
 
 --------------------------------------------------------------------------------
 -- Core syntax
@@ -42,7 +46,7 @@ data QOp
 -- ANCHOR: program-syntax
 data Step
   = Unitary QOp             -- A unitary quantum program
-  | Initialize [Nat] [Bool] -- Initialize qubits qs to classical values vs.
+  | Initialize [Nat] [Bit]  -- Initialize qubits qs to classical values vs.
   | Measure    [Nat] -- Measurement of qubits ks (stochastic non-reversible process)
   deriving (Show, Eq)
 
@@ -107,7 +111,7 @@ instance Operator QOp
 type RealT = Double  -- Can be replaced by e.g. exact fractions or constructive reals
 type ComplexT = Complex RealT
 
-type Outcomes = [Bool]     -- head = most recent
+type Outcomes = [Bit]      -- head = most recent
 type RNG      = [Double]   -- infinite steam in [0,1)
 
 {-| We define a HilbertSpace typeclass, which we will use for states.

@@ -43,6 +43,8 @@ library
       QPP
       -- QOp syntax definitions and Operator typeclass:
       QPP.Syntax
+      -- The classical bit of ket, Initialize and measurement outcomes:
+      QPP.Bit
       -- General finite-dimensional unitary syntax:
       QPP.UOp
       QPP.UOp.Syntax
@@ -92,8 +94,9 @@ library
       QPP.PrettyPrint.SyntaxTree
       QPP.TypeCheck.Pauli
 
-    build-depends:  
+    build-depends:
         base,
+        deepseq,
         hmatrix,
         mtl,
         array,
@@ -315,6 +318,12 @@ test-suite StatevectorTest
   import: test-common
   type: exitcode-stdio-1.0
   main-is: StatevectorTest.hs
+  other-modules: Generators
+
+test-suite BitTest
+  import: test-common
+  type: exitcode-stdio-1.0
+  main-is: BitTest.hs
   other-modules: Generators
 
 test-suite MatrixPrepTest

@@ -100,8 +100,8 @@ qft2Naive = H ⊗ I >: C (R Z (1/2)) >: I ⊗ H >: Permute [1,0]
 --------------------------------------------------------------------------
 
 -- | Big-endian bit list: `bitsOf 3 5 == [1,0,1]` (qubit 0 is most significant).
-bitsOf :: Int -> Int -> [Int]
-bitsOf n x = [ (x `div` 2 ^ i) `mod` 2 | i <- [n-1, n-2 .. 0] ]
+bitsOf :: Int -> Int -> [Bit]
+bitsOf n x = [ fromIntegral ((x `div` 2 ^ i) `mod` 2) | i <- [n-1, n-2 .. 0] ]
 
 -- | The amplitudes <y|psi> for y = 0 .. 2^n-1.
 amplitudes :: Int -> StateT -> [ComplexT]

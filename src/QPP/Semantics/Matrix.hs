@@ -35,8 +35,8 @@ measure1 (state, outcomes, (r:rng)) k = let
       prob0 = realPart $ inner state s0
       prob1 = realPart $ inner state s1
 
-      outcome = if (r < prob0) then False else True
-      collapsed_state = normalize $ if(outcome) then s1 else s0
+      outcome = Bit (r >= prob0)
+      collapsed_state = normalize $ if outcome == 1 then s1 else s0
 
       in
           if (abs(prob1+prob0-1)>tol) then
@@ -47,10 +47,10 @@ measure1 (state, outcomes, (r:rng)) k = let
 measure1 (_,_,[]) _ = error "No more random numbers. This never happens."
 
   {-| bra [v0,...,v_{n-1}] (where v_j is 0 or 1) is the adjoint state <v0 v1 ... v_{n-1}|. In the matrix representation, this is a row-vector in C^{2^n}, i.e. of dimension (1 >< 2^n). -}
-ket :: [Int] -> CMat
+ket :: [Bit] -> CMat
 ket []     = (1><1) [1]
-ket (v':vs) = let 
-      v = fromIntegral v' :+ 0
+ket (v':vs) = let
+      v = fromIntegral (fromEnum v') :+ 0
   in 
       (2><1) [1-v,v] ⊗ (ket vs)
 
@@ -186,9 +186,9 @@ I ⨷ ... ⨷ I ⨷ P ⨷ I ⨷ ... ⨷ I
 \-- k-1 --/                   /
  \------------ n ------------/
 -}
-measureProjection :: Int -> Int -> Int -> CMat
-measureProjection n k v' = let     
-        v = fromIntegral v' :+ 0
+measureProjection :: Int -> Int -> Bit -> CMat
+measureProjection n k v' = let
+        v = fromIntegral (fromEnum v') :+ 0
         p = (2><2) [1-v,0,
                     0,  v]
     in

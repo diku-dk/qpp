@@ -69,7 +69,7 @@ assertClose msg a b =
   in assertBool (msg ++ " (diff=" ++ show d ++ ")") (d < tol)
 
 ------------------------------------------------------------------------
--- Rationals / Pauli / permutations
+-- Rationals / Pauli / permutations / bits
 ------------------------------------------------------------------------
 
 -- | Random rational, signed, small numerator and denominator.
@@ -99,6 +99,11 @@ genPauli n = do
 
 genPermutation :: Int -> Gen [Int]
 genPermutation n = shuffle [0 .. n - 1]
+
+-- | A random bit. It shrinks from 1 to 0.
+instance Arbitrary Bit where
+  arbitrary = elements [0, 1]
+  shrink b  = [ 0 | b == 1 ]
 
 ------------------------------------------------------------------------
 -- QOp generators

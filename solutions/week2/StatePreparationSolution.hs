@@ -43,11 +43,11 @@ problem sheet (Exercise 1, 2, 5).
 
 -- | Prepare |b1..bn> from |00..0> using X on exactly the qubits with
 -- b_k = 1. `bits` is e.g. [1,0,1] for |101>.
-prepareBasisState :: [Int] -> QOp
-prepareBasisState [] = error "Cannot fold an empty list of integers!"
+prepareBasisState :: [Bit] -> QOp
+prepareBasisState [] = error "Cannot fold an empty list of bits!"
 prepareBasisState bits = foldr1 Tensor (map chooseOp bits)
   where
-    chooseOp n = if n `mod` 2 == 0 then I else X -- Handles operation modulo 2 ... other options can be chosen
+    chooseOp b = if b == 0 then I else X
 
 
 -- | A hand-built 2-qubit real-amplitude state-prep circuit (angles are

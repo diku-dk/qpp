@@ -41,7 +41,6 @@
 module QPP.Semantics where
 
 import QPP.Syntax
-import Data.Bits(xor)
 import Data.Array(accumArray,elems)
 import Data.List (foldl')
 
@@ -102,11 +101,11 @@ evalStepWithW applyU meas (st, outs, rng) step = case step of
   Initialize ks vs ->
     let n = n_qubits st
         ((st', os, rng'), w1) = evalStepWithW applyU meas (st, [], rng) (Measure ks)
-        -- List of outcomes xor values for each initialized qubit
-        corrections     = zipWith xor os vs
+        -- Outcome + value (modulo 2) for each initialized qubit: 1 where they differ
+        corrections     = zipWith (+) os vs
         -- Now we build the full list, including unaffected qubits
-        corrFull        = accumArray xor False (0,n-1) (zip ks corrections)
-        corrOp          = foldl (⊗) One [ if c then X else Id 1 | c <- elems corrFull ]
+        corrFull        = accumArray (+) 0 (0,n-1) (zip ks corrections)
+        corrOp          = foldl (⊗) One [ if c == 1 then X else Id 1 | c <- elems corrFull ]
         (res, w2)       = evalStepWithW applyU meas (st', outs, rng') (Unitary corrOp)
     in (res, w1 <> w2)
 
