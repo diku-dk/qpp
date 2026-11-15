@@ -45,6 +45,13 @@ Install the font:
 Then quit VS Code and start it again. The font applies only in windows
 opened on the QPP folder.
 
+QPP's settings also colour `⊕` blue and `⊗` orange, through the extension
+Highlight. When you open the QPP folder, VS Code offers to install the
+extensions QPP recommends; accept. Otherwise, in **View > Extensions**,
+search for `@id:fabiospampinato.vscode-highlight` and install it, choosing
+**Install in WSL: Ubuntu** if offered. Without it the two symbols keep the
+ordinary text colour.
+
 ## Check type information
 
 Haskell Language Server supplies types and error messages. It may already

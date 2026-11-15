@@ -3,5 +3,13 @@
   "haskell.plugin.ghcide-completions.globalOn": false,
   "editor.wordBasedSuggestions": "off",
   "editor.tabCompletion": "onlySnippets",
-  "editor.fontFamily": "'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace"
+  "editor.fontFamily": "'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace",
+  "highlight.regexes": {
+    "(⊕)": [
+      { "fontWeight": "bold", "light": { "color": "#1d4ed8" }, "dark": { "color": "#60a5fa" } }
+    ],
+    "(⊗)": [
+      { "fontWeight": "bold", "light": { "color": "#c2410c" }, "dark": { "color": "#fb923c" } }
+    ]
+  }
 }
