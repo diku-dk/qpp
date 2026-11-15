@@ -1,0 +1,17 @@
+{
+  "circ": {
+    "scope": "haskell",
+    "prefix": "\\circ",
+    "body": "∘"
+  },
+  "otimes": {
+    "scope": "haskell",
+    "prefix": "\\otimes",
+    "body": "⊗"
+  },
+  "oplus": {
+    "scope": "haskell",
+    "prefix": "\\oplus",
+    "body": "⊕"
+  }
+}

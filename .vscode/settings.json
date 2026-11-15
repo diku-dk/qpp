@@ -1,0 +1,7 @@
+{
+  "haskell.manageHLS": "GHCup",
+  "haskell.plugin.ghcide-completions.globalOn": false,
+  "editor.wordBasedSuggestions": "off",
+  "editor.tabCompletion": "onlySnippets",
+  "editor.fontFamily": "'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace"
+}
