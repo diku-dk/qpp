@@ -1,16 +1,17 @@
 -- | Properties of the state-vector semantics, "QPP.Semantics.Statevector".
 --
 --   The semantics has one rule per constructor of `QOp`: @applyOp e@ acts on
---   the first qubits of a state and carries any further qubits along. The
---   suite checks it in six ways.
+--   a state of exactly the qubits of @e@, or on several such states side by
+--   side. The suite checks it in six ways.
 --
 --   * __Matrix semantics, 0 to 8 qubits.__ The matrix of @evalOp e@ is the
---     matrix of "QPP.Semantics.Matrix", and on a state with @t@ further qubits
---     @applyOp e ψ = (M(e) ⊗ I) ψ@. Random expressions of every arity, and
---     every constructor in fixed positions at every size.
---   * __The rules.__ Each rule as it is written, on the blocks and halves of a
---     state. No matrix of a whole operator is formed here.
---   * __Algebra.__ Linearity, norm, adjoints, shapes, several states at once.
+--     matrix of "QPP.Semantics.Matrix", and on states side by side
+--     @applyOp e ψ@ is the matrix product M(e) ψ. Random expressions of every
+--     arity, and every constructor in fixed positions at every size.
+--   * __The rules.__ Each rule as it is written, on the halves of a state and
+--     on the rows and columns of its table. No matrix of a whole operator is
+--     formed here.
+--   * __Algebra.__ Linearity, norm, adjoints, sizes, several states at once.
 --   * __The operator interface.__ Evaluated operators combined with `<>`, `⊗`,
 --     `⊕`, `adj` and the vector-space operations have the matrices that the
 --     matrix backend gets from the same combinations, and the instances agree
@@ -35,8 +36,8 @@ import qualified QPP.Semantics.Statevector as SV
 import Programs.QFT (qft)
 
 import Numeric.LinearAlgebra
-  ( rows, flatten, reshape, toList, toRows, toColumns, fromColumns
-  , asColumn, vjoin, kronecker, ident, scale, takeRows, dropRows, (><), norm_2 )
+  ( rows, flatten, reshape, toList, toRows, fromRows, toColumns, fromColumns
+  , takeColumns, asColumn, vjoin, scale, takeRows, dropRows, (><), norm_2 )
 import qualified Numeric.LinearAlgebra as H
 
 import Control.Applicative (liftA3)
@@ -55,7 +56,7 @@ import Generators
 -- Amplitudes
 ------------------------------------------------------------------------
 
--- | The state-vector semantics, on any column of amplitudes.
+-- | The state-vector semantics, on states of exactly the expression's qubits.
 sv :: QOp -> CMat -> CMat
 sv = SV.applyOp
 
@@ -69,12 +70,6 @@ genAmps r c = (r >< c) <$> vectorOf (r * c) (liftA2 (:+) unit unit)
 genColumn :: Int -> Gen CMat
 genColumn q = genAmps (2 ^ q) 1
 
--- | A column for an expression of a qubits: a, a+1 or a+2 qubits, at most 8.
-genFor :: Int -> Gen CMat
-genFor a = do
-  t <- choose (0, min 2 (8 - a))
-  genColumn (a + t)
-
 -- | A state of norm 1 on q qubits.
 genState :: Int -> Gen CMat
 genState q = do
@@ -84,12 +79,16 @@ genState q = do
 column :: [ComplexT] -> CMat
 column zs = (length zs >< 1) zs
 
--- | The 2^n blocks of a column. Block x holds, in order, the amplitudes whose
---   first n qubits read x.
-blocks :: Int -> CMat -> [CMat]
-blocks n ψ = map asColumn (toRows (reshape (rows ψ `div` 2 ^ n) (flatten ψ)))
+-- | A column as a table: a row for each value of its first n qubits, and a
+--   column for each value of the others.
+table :: Int -> CMat -> CMat
+table n ψ = reshape (rows ψ `div` 2 ^ n) (flatten ψ)
 
--- | Blocks one below the other, as one column.
+-- | The amplitudes of a column, one by one.
+amplitudes :: CMat -> [CMat]
+amplitudes = map asColumn . toRows
+
+-- | Columns one below the other, as one column.
 stack :: [CMat] -> CMat
 stack = asColumn . vjoin . map flatten
 
@@ -191,23 +190,23 @@ shrinkExpr n = filter axesHermitian . shrinkQOp n
 forExpr :: Testable prop => Int -> (QOp -> prop) -> Property
 forExpr n = forAllShrinkShow (genExprOf n) (shrinkExpr n) showOp
 
--- | An expression of a qubits (0 to 5) together with a column of a + t qubits
---   (t from 0 to 3).
+-- | An expression of a qubits (0 to 5) together with p states of a qubits
+--   side by side (p from 1 to 3).
 data Applied = Applied Int Int QOp CMat
 
 instance Show Applied where
-  show (Applied a t e ψ) =
-    showOp e ++ "  (" ++ show a ++ " qubits) on " ++ show (a + t) ++ " qubits: "
+  show (Applied a p e ψ) =
+    showOp e ++ "  (" ++ show a ++ " qubits) on " ++ show p ++ " states: "
              ++ show (toList (flatten ψ))
 
 instance Arbitrary Applied where
   arbitrary = do
     a <- choose (0, 5)
-    t <- choose (0, 3)
-    liftA2 (Applied a t) (genExprOf a) (genColumn (a + t))
-  shrink (Applied a t e ψ) =
-       [ Applied a (t-1) e (takeRows (rows ψ `div` 2) ψ) | t > 0 ]
-    ++ [ Applied a t e' ψ | e' <- shrinkExpr a e ]
+    p <- choose (1, 3)
+    liftA2 (Applied a p) (genExprOf a) (genAmps (2 ^ a) p)
+  shrink (Applied a p e ψ) =
+       [ Applied a 1 e (takeColumns 1 ψ) | p > 1 ]
+    ++ [ Applied a p e' ψ | e' <- shrinkExpr a e ]
 
 ------------------------------------------------------------------------
 -- Against the matrix semantics, 0 to 8 qubits
@@ -218,11 +217,11 @@ prop_matrix :: Int -> Property
 prop_matrix n = forExpr n $ \e ->
   (to (SV.evalOp e) :: CMat) =~ MS.evalOp e
 
--- | On a column with t further qubits, S(e) ψ = (M(e) ⊗ I) ψ.
-prop_carries :: Int -> Int -> Property
-prop_carries a t = forExpr a $ \e ->
-  forAll (genColumn (a + t)) $ \ψ ->
-    sv e ψ =~ (kronecker (MS.evalOp e) (ident (2 ^ t)) H.<> ψ)
+-- | On states side by side, S(e) ψ is the matrix product M(e) ψ.
+prop_product :: Int -> Property
+prop_product a = forExpr a $ \e ->
+  forAll (choose (1, 4)) $ \p -> forAll (genAmps (2 ^ a) p) $ \ψ ->
+    sv e ψ =~ (MS.evalOp e H.<> ψ)
 
 -- | Every constructor in fixed positions on exactly n qubits.
 fixedCases :: Int -> [(String, QOp)]
@@ -254,9 +253,8 @@ matrixTests :: TestTree
 matrixTests = testGroup "Matrix semantics, 0 to 8 qubits"
   [ budget 100 $ testGroup "to (evalOp e) = M(e), random expressions"
       [ testProperty (show n ++ " qubits") (prop_matrix n) | n <- [0 .. 8] ]
-  , budget 20 $ testGroup "S(e) ψ = (M(e) ⊗ I) ψ with t further qubits"
-      [ testProperty (show a ++ " + " ++ show t ++ " qubits") (prop_carries a t)
-      | a <- [0 .. 8], t <- [0 .. 8 - a] ]
+  , budget 50 $ testGroup "S(e) ψ = M(e) ψ, on one to four states side by side"
+      [ testProperty (show a ++ " qubits") (prop_product a) | a <- [0 .. 8] ]
   , testGroup "Every constructor in fixed positions"
       [ testCase (show n ++ " qubits: " ++ show (length (fixedCases n)) ++ " expressions") $
           mapM_ (\(name, e) -> assertClose (show n ++ " qubits, " ++ name)
@@ -271,29 +269,29 @@ matrixTests = testGroup "Matrix semantics, 0 to 8 qubits"
 
 prop_rule_id :: Property
 prop_rule_id =
-  forAll (choose (0, 6)) $ \n -> forAll (genFor n) $ \ψ ->
+  forAll (choose (0, 6)) $ \n -> forAll (genColumn n) $ \ψ ->
     sv (Id n) ψ =~ ψ
 
 prop_rule_phase :: Property
 prop_rule_phase =
-  forAll genRat $ \θ -> forAll (genFor 0) $ \ψ ->
+  forAll genRat $ \θ -> forAll (genColumn 0) $ \ψ ->
     sv (Phase θ) ψ =~ scale (cis (pi * fromRational θ)) ψ
 
--- | A gate combines the two halves with the entries of its 2×2 matrix.
+-- | A gate combines the two amplitudes with the entries of its 2×2 matrix.
 prop_rule_gate :: Property
 prop_rule_gate =
-  forAll (elements [X, Y, Z, H, SX]) $ \g -> forAll (genFor 1) $ \ψ ->
+  forAll (elements [X, Y, Z, H, SX]) $ \g -> forAll (genColumn 1) $ \ψ ->
     let m        = MS.evalOp g
         g_ i j   = scale (m `H.atIndex` (i, j))
         (ψ0, ψ1) = halves ψ
     in sv g ψ =~ stack [ g_ 0 0 ψ0 + g_ 0 1 ψ1, g_ 1 0 ψ0 + g_ 1 1 ψ1 ]
 
--- | Each block at b₀…bₙ₋₁ moves to b_{k₀}…b_{kₙ₋₁}.
+-- | The amplitude at b₀…bₙ₋₁ moves to b_{k₀}…b_{kₙ₋₁}.
 prop_rule_permute :: Property
 prop_rule_permute =
-  forAll (choose (0, 6)) $ \n -> forAll (genPermutation n) $ \ks -> forAll (genFor n) $ \ψ ->
-    let before   = blocks n ψ
-        moved    = blocks n (sv (Permute ks) ψ)
+  forAll (choose (0, 6)) $ \n -> forAll (genPermutation n) $ \ks -> forAll (genColumn n) $ \ψ ->
+    let before   = amplitudes ψ
+        moved    = amplitudes (sv (Permute ks) ψ)
         bits x   = [ testBit x (n - 1 - j) | j <- [0 .. n-1] ]
         index bs = sum [ 2 ^ (n - 1 - j) | (j, True) <- zip [0 :: Int ..] bs ]
         target x = index [ bits x !! k | k <- ks ]
@@ -307,7 +305,7 @@ prop_rule_rotation =
   where gen = do n  <- choose (0, 5)
                  ax <- genHermitian n =<< choose (0, 3)
                  θ  <- genRat
-                 ψ  <- genFor n
+                 ψ  <- genColumn n
                  pure (ax, θ, ψ)
 
 prop_rule_control :: Property
@@ -316,17 +314,20 @@ prop_rule_control =
     let (ψ0, ψ1) = halves ψ
     in sv (C u) ψ =~ stack [ψ0, sv u ψ1]
   where gen = do n <- choose (0, 5)
-                 liftA2 (,) (genExprOf n) (genFor (n + 1))
+                 liftA2 (,) (genExprOf n) (genColumn (n + 1))
 
--- | S(v) on each block for the qubits of u, then S(u) on the result.
+-- | ψ as a table with a row for each value of the qubits of u and a column
+--   for each value of the qubits of v: S(v) on every row, then S(u) on every
+--   column.
 prop_rule_tensor :: Property
 prop_rule_tensor =
   forAll gen $ \(u, v, ψ) ->
-    let χ = stack [ sv v b | b <- blocks (op_qubits u) ψ ]
-    in sv (Tensor u v) ψ =~ sv u χ
+    let byRows = fromRows    [ flatten (sv v (asColumn r)) | r <- toRows (table (op_qubits u) ψ) ]
+        byCols = fromColumns [ flatten (sv u (asColumn c)) | c <- toColumns byRows ]
+    in sv (Tensor u v) ψ =~ asColumn (flatten byCols)
   where gen = do n <- choose (0, 3)
                  m <- choose (0, 3)
-                 liftA3 (,,) (genExprOf n) (genExprOf m) (genFor (n + m))
+                 liftA3 (,,) (genExprOf n) (genExprOf m) (genColumn (n + m))
 
 prop_rule_directsum :: Property
 prop_rule_directsum =
@@ -334,14 +335,14 @@ prop_rule_directsum =
     let (ψ0, ψ1) = halves ψ
     in sv (DirectSum u v) ψ =~ stack [sv u ψ0, sv v ψ1]
   where gen = do n <- choose (0, 5)
-                 liftA3 (,,) (genExprOf n) (genExprOf n) (genFor (n + 1))
+                 liftA3 (,,) (genExprOf n) (genExprOf n) (genColumn (n + 1))
 
 prop_rule_compose :: Property
 prop_rule_compose =
   forAll gen $ \(u, v, ψ) ->
     sv (Compose u v) ψ =~ sv u (sv v ψ)
   where gen = do n <- choose (0, 5)
-                 liftA3 (,,) (genExprOf n) (genExprOf n) (genFor n)
+                 liftA3 (,,) (genExprOf n) (genExprOf n) (genColumn n)
 
 prop_rule_adjoint :: Applied -> Property
 prop_rule_adjoint (Applied _ _ u ψ) =
@@ -351,11 +352,11 @@ ruleTests :: TestTree
 ruleTests = budget 100 $ testGroup "The rules"
   [ testProperty "Id n: ψ"                                    prop_rule_id
   , testProperty "Phase θ: e^{iπθ} ψ"                          prop_rule_phase
-  , testProperty "X, Y, Z, H, SX: G on the two halves"         prop_rule_gate
-  , testProperty "Permute k: block b₀…bₙ₋₁ moves to b_{k₀}…"   prop_rule_permute
+  , testProperty "X, Y, Z, H, SX: G on the two amplitudes"     prop_rule_gate
+  , testProperty "Permute k: the amplitude at b₀…bₙ₋₁ moves"   prop_rule_permute
   , testProperty "R u θ: cos α ψ − i sin α S(u) ψ"             prop_rule_rotation
   , testProperty "C u: S(u) on the lower half"                 prop_rule_control
-  , testProperty "u ⊗ v: S(v) on each block, then S(u)"        prop_rule_tensor
+  , testProperty "u ⊗ v: S(v) on every row, S(u) on every column" prop_rule_tensor
   , testProperty "u ⊕ v: S(u) and S(v) on the halves"          prop_rule_directsum
   , testProperty "u ∘ v: S(u) (S(v) ψ)"                        prop_rule_compose
   , testProperty "Adjoint u: S(dagger u) ψ"                    prop_rule_adjoint
@@ -366,8 +367,8 @@ ruleTests = budget 100 $ testGroup "The rules"
 ------------------------------------------------------------------------
 
 prop_linear :: Applied -> Property
-prop_linear (Applied a t e ψ) =
-  forAll (genColumn (a + t)) $ \φ -> forAll (liftA2 (:+) unit unit) $ \z ->
+prop_linear (Applied a p e ψ) =
+  forAll (genAmps (2 ^ a) p) $ \φ -> forAll (liftA2 (:+) unit unit) $ \z ->
     sv e (scale z ψ + φ) =~ scale z (sv e ψ) + sv e φ
   where unit = choose (-1, 1)
 
@@ -383,20 +384,11 @@ prop_inverse (Applied _ _ e ψ) =
 
 -- | ⟨φ, S(e) ψ⟩ = ⟨S(Adjoint e) φ, ψ⟩: the adjoint, with no matrix involved.
 prop_adjoint_inner :: Applied -> Property
-prop_adjoint_inner (Applied a t e ψ) =
-  forAll (genColumn (a + t)) $ \φ ->
+prop_adjoint_inner (Applied a p e ψ) =
+  forAll (genAmps (2 ^ a) p) $ \φ ->
     let lhs = innerC φ (sv e ψ)
         rhs = innerC (sv (Adjoint e) φ) ψ
     in counterexample (show lhs ++ " and " ++ show rhs) (magnitude (lhs - rhs) < tol)
-
--- | `applyOp` returns the shape it was given, and the amplitudes do not depend
---   on that shape: any number of columns that divides the further amplitudes.
-prop_shape :: Applied -> Property
-prop_shape (Applied _ t e ψ) =
-  forAll (elements [ 2 ^ s | s <- [0 .. t] ]) $ \(c :: Int) ->
-    let φ      = reshape c (flatten ψ)
-        result = sv e φ
-    in H.size result === H.size φ .&&. asColumn (flatten result) =~ sv e ψ
 
 -- | Columns side by side are transformed one by one, also when their number
 --   is not a power of two.
@@ -424,17 +416,21 @@ algebraTests = budget 100 $ testGroup "Algebra"
   , testProperty "S(e) keeps the norm"                     prop_norm
   , testProperty "S(Adjoint e) undoes S(e), and back"      prop_inverse
   , testProperty "⟨φ, S(e) ψ⟩ = ⟨S(Adjoint e) φ, ψ⟩"       prop_adjoint_inner
-  , testProperty "the result has the argument's shape"     prop_shape
   , testProperty "several states side by side"             prop_columns
   , testProperty "to (from m) = m"                         prop_to_from
   , testProperty "n_qubits (evalOp e) is the arity of e"   prop_arity
-  , testCase "apply rejects a state of another size" $ do
-      r <- try (evaluate (SV.apply (SV.evalOp (C X)) (SV.ket [0, 0, 0])))
+  , testCase "apply rejects a state of another size" $
+      rejected (SV.apply (SV.evalOp (C X)) (SV.ket [0, 0, 0]))
+  , testCase "applyOp rejects a state of another size" $
+      rejected (sv (C X) (SV.ket [0, 0, 0]))
+  ]
+  where
+    rejected result = do
+      r <- try (evaluate result)
       case r of
         Left (err :: ErrorCall) ->
           assertBool (show err) ("2-qubit operator cannot act on 8 amplitudes" `isInfixOf` show err)
         Right _ -> assertFailure "a 2-qubit operator was applied to 3 qubits"
-  ]
 
 ------------------------------------------------------------------------
 -- The operator interface of evaluated operators
@@ -442,7 +438,8 @@ algebraTests = budget 100 $ testGroup "Algebra"
 
 -- | The interface does on evaluated operators what it does on their matrices.
 --   Every operator is `from` of its matrix, so random matrices cover them
---   all: a and b on n qubits, c on m. The last line adds one further qubit.
+--   all: a and b on n qubits, c on m. The last line takes three states side
+--   by side.
 prop_interface :: Property
 prop_interface =
   forAll gen $ \(a, b, c, z, ψ) ->
@@ -458,15 +455,15 @@ prop_interface =
          , mat (z .* u .+ v .- u) =~ z .* a .+ b .- a
          , counterexample "inner" (magnitude (inner u v - inner a b) < tol)
          , counterexample "norm"  (abs (norm u - norm a) < tol)
-         , SV.runOp (u ⊗ w) ψ =~ (kronecker (a ⊗ c) (ident 2) H.<> ψ)
+         , SV.runOp (u ⊗ w) ψ =~ ((a ⊗ c) H.<> ψ)
          ]
-  where gen = do n <- choose (0, 3)
+  where gen = do n <- choose (0, 3 :: Int)
                  m <- choose (0, 2)
                  a <- genAmps (2 ^ n) (2 ^ n)
                  b <- genAmps (2 ^ n) (2 ^ n)
                  c <- genAmps (2 ^ m) (2 ^ m)
                  z <- liftA2 (:+) (choose (-1, 1)) (choose (-1, 1))
-                 ψ <- genColumn (n + m + 1)
+                 ψ <- genAmps (2 ^ (n + m)) 3
                  pure (a, b, c, z, ψ)
 
 -- | The instances follow the rules of `applyOp`: combining two evaluated

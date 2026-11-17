@@ -5,14 +5,15 @@
 --   instead and never builds that matrix: the largest matrix of an operator
 --   that it forms is 2×2.
 --
---   `applyOp` first regroups the amplitudes into one row for each value of the
---   operator's own qubits. Each rule is then a formula on the rows:
+--   `applyOp e ψ` takes a state ψ on exactly the qubits of @e@, with one row
+--   for each of their values. Each rule is a formula on the rows:
 --
 --   >  u ∘ v     apply v, then u
 --   >  u ⊕ v     u on the upper half of the rows, v on the lower half
 --   >  C u       u on the lower half of the rows
 --   >  R u θ     cos(πθ/2) ψ − i sin(πθ/2) (u applied to ψ)
---   >  u ⊗ v     with one row for each value of u's qubits: v on every row, then u
+--   >  u ⊗ v     ψ as a table with a row for each value of u's qubits and a
+--   >            column for each value of v's: v on every row, u on every column
 --
 --   A one-qubit gate multiplies the two rows by its 2×2 matrix, and `Permute`
 --   permutes the rows. The gate rule is written out entry by entry, not handed
@@ -20,10 +21,10 @@
 --   amplitudes which cancel do so exactly. A measurement with the sample 0.0
 --   relies on that (see the Deutsch case in @StatevectorTest@).
 --
---   A state may have more qubits than the operator: `applyOp` acts on the
---   first ones and carries the rest along, so that for an operator @e@ with
---   matrix M(e) it computes (M(e) ⊗ I) ψ. The recursive calls rely on this.
---   The public `apply` asks for a state of exactly the operator's qubits.
+--   ψ may hold several states side by side, one in each column, and every rule
+--   treats them alike. For an operator @e@ with matrix M(e), `applyOp e ψ` is
+--   therefore the matrix product M(e) ψ. The tensor rule uses this: it hands
+--   all rows of its table to @v@ at once, as the columns of one matrix.
 --
 --   Evaluated operators (`OpT`) have the operator interface of "QPP.Syntax":
 --   `<>` and `∘`, `⊗`, `⊕`, and the vector-space operations. These combine
@@ -42,9 +43,8 @@ import Data.Bits (bit, (.&.))
 -- | States are shared with the matrix semantics: a column of 2^n amplitudes.
 type StateT = CMat
 
--- | An operator is the function that applies it, together with its arity. The
---   function accepts a state of at least that many qubits, in any shape: it
---   acts on the first qubits and returns the shape it was given.
+-- | An operator is the function that applies it, together with its arity n.
+--   The function takes 2^n rows and transforms every column.
 data OpT = OpT { opQubits :: Int, runOp :: CMat -> CMat }
 
 instance HasQubits OpT where n_qubits = opQubits
@@ -59,20 +59,24 @@ evalOp e = OpT (op_qubits e) (applyOp e)
 apply :: OpT -> StateT -> StateT
 apply (OpT n f) ψ
   | rows ψ == 2^n = f ψ
-  | otherwise     = error $ "A " ++ show n ++ "-qubit operator cannot act on "
-                         ++ show (rows ψ) ++ " amplitudes"
+  | otherwise     = wrongSize n ψ
+
+-- | The error for a state that does not have one row for each value of n qubits.
+wrongSize :: Int -> CMat -> a
+wrongSize n ψ = error $ "A " ++ show n ++ "-qubit operator cannot act on "
+                     ++ show (rows ψ) ++ " amplitudes"
 
 -- | Applied to the identity, an operator returns its matrix; a matrix is
 --   applied by multiplication.
 instance Convertible OpT CMat where
   to (OpT n f) = f (ident (2^n))
-  from m       = onRows (n_qubits m) (m <>)
+  from m       = OpT (n_qubits m) (m <>)
 
--- | @applyOp e φ@ applies @e@ to the amplitudes in φ, and returns them in the
---   shape of φ. The rules work on ψ, which holds the same amplitudes with one
---   row for each value of the qubits of @e@.
+-- | @applyOp e ψ@ applies @e@ to every column of ψ, which has one row for each
+--   value of the qubits of @e@. A ψ of another size is an error.
 applyOp :: QOp -> CMat -> CMat
-applyOp e φ = rowsAs (rows φ) $ case e of
+applyOp e ψ | rows ψ /= 2 ^ op_qubits e = wrongSize (op_qubits e) ψ
+applyOp e ψ = case e of
     Id _          -> ψ
     Phase θ       -> scale (cis (pi * fromRational θ)) ψ
     Permute ks    -> ψ ? map (sourceRow ks) [0 .. rows ψ - 1]
@@ -82,12 +86,14 @@ applyOp e φ = rowsAs (rows φ) $ case e of
     DirectSum u v -> applyOp u ψ0 `above` applyOp v ψ1
     Compose u v   -> applyOp u (applyOp v ψ)
     Adjoint u     -> applyOp (dagger u) ψ
-    Tensor u v    -> applyOp u (tr' (applyOp v (tr' (rowsAs d ψ))))
-      where d = 2 ^ op_qubits u
+    Tensor u v    -> everyColumn (everyRow ψ)
+      where everyColumn = inRows (rowsOf u) (applyOp u)
+            everyRow    = inRows (rowsOf u)
+                            (tr' . inRows (rowsOf v) (applyOp v) . tr')
     _             -> (g 0 0 ψ0 + g 0 1 ψ1) `above` (g 1 0 ψ0 + g 1 1 ψ1)
       where g i j = scale (M.evalOp e `atIndex` (i, j))     -- X, Y, Z, H, SX
   where
-    ψ  = rowsAs (2 ^ op_qubits e) φ
+    rowsOf w = 2 ^ op_qubits w
     h  = rows ψ `div` 2
     ψ0 = takeRows h ψ
     ψ1 = dropRows h ψ
@@ -95,6 +101,10 @@ applyOp e φ = rowsAs (rows φ) $ case e of
 -- | The same entries, in the same row-by-row order, in d rows.
 rowsAs :: Int -> CMat -> CMat
 rowsAs d m = reshape (rows m * cols m `div` d) (flatten m)
+
+-- | Apply f to the entries of ψ arranged in d rows, and arrange the result as ψ.
+inRows :: Int -> (CMat -> CMat) -> CMat -> CMat
+inRows d f ψ = rowsAs (rows ψ) (f (rowsAs d ψ))
 
 -- | One matrix above another.
 above :: CMat -> CMat -> CMat
@@ -106,10 +116,6 @@ above top bottom = reshape (cols top) (vjoin [flatten top, flatten bottom])
 sourceRow :: [Int] -> Int -> Int
 sourceRow ks x = sum [ qubit k | (j, k) <- zip [0..] ks, x .&. qubit j /= 0 ]
   where qubit i = bit (length ks - 1 - i)     -- qubit i of a row index
-
--- | The operator on n qubits that maps the 2^n rows of a state by f.
-onRows :: Int -> (CMat -> CMat) -> OpT
-onRows n f = OpT n (\φ -> rowsAs (rows φ) (f (rowsAs (2^n) φ)))
 
 -- | The number of qubits of two operators that are composed, summed or added.
 sameQubits :: Int -> Int -> Int
@@ -124,13 +130,12 @@ instance Semigroup OpT where
 
 -- | u ⊕ v: u on the upper half of the rows, v on the lower half, as in `applyOp`.
 instance HasDirectSum OpT where
-  OpT n f ⊕ OpT m g = onRows (k + 1) (\ψ -> f (takeRows (2^k) ψ) `above` g (dropRows (2^k) ψ))
+  OpT n f ⊕ OpT m g = OpT (k + 1) (\ψ -> f (takeRows (2^k) ψ) `above` g (dropRows (2^k) ψ))
     where k = sameQubits n m
 
--- | u ⊗ v: with one row for each value of u's qubits, v on every row, then
---   u, as in `applyOp`.
+-- | u ⊗ v: v on every row of the table, u on every column, as in `applyOp`.
 instance HasTensorProduct OpT where
-  OpT n f ⊗ OpT m g = onRows (n + m) (\ψ -> f (tr' (g (tr' (rowsAs (2^n) ψ)))))
+  OpT n f ⊗ OpT m g = OpT (n + m) (inRows (2^n) f . inRows (2^n) (tr' . inRows (2^m) g . tr'))
 
 -- | The adjoint of an evaluated operator is taken through its matrix. For an
 --   expression, evaluate its adjoint instead: @evalOp (adj e)@ forms no matrix.

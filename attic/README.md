@@ -12,7 +12,7 @@ file is unchanged, its module name included. The module of the same name in
 
 | | `StatevectorMassiv.hs` | its replacement |
 |---|---|---|
-| Size | 621 lines | 176 lines |
+| Size | 621 lines | 181 lines |
 | Arrays | `massiv` | `hmatrix`; `StateT = CMat`, as in the matrix backend |
 | Rotation axes | Pauli strings (with `Phase`, `Permute`, `∘`, `Adjoint`); others raise an error | any Hermitian operator |
 | Tests | the cross-backend suites | those, and `StatevectorTest` |

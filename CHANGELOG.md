@@ -7,7 +7,7 @@
 `QPP.Semantics.Statevector` is a new module with the same backend names
 (`StateT`, `OpT`, `ket`, `evalOp`, `apply`, `measure1`, `evalStep`,
 `evalProg`). It defines the semantics by one rule per constructor of `QOp`,
-on `hmatrix`, in 176 lines against the 621 of the `massiv` module. Programs
+on `hmatrix`, in 181 lines against the 621 of the `massiv` module. Programs
 that only use the backend names need no change.
 
 | What | Before | Now |
@@ -19,6 +19,12 @@ that only use the backend names need no change.
 | `HasWork`, `toWork`, `fromWork` | in `QPP.Semantics`; used only by the `massiv` module | removed |
 | `massiv` | a dependency of the library | not needed |
 | Tests | cross-backend suites | those, and the new suite `StatevectorTest` |
+
+`applyOp e ψ` takes a state ψ of exactly the qubits of `e`, like `apply`;
+another size is an error. Until 2026-11-17 it also accepted a state of more
+qubits, acted on the first ones and carried the rest along. Write `e ⊗ Id p`
+for that now. The columns of ψ may still be several states side by side, and
+`applyOp e ψ` is then the matrix product `M(e) ψ`.
 
 ### Rotations have one formula in every backend
 
