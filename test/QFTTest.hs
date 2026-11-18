@@ -22,32 +22,24 @@ import Generators
 -- Reference matrices
 ------------------------------------------------------------------------
 
--- NB: `qft` uses a qubit-0-as-LSB convention — the integer a basis state
--- represents has qubit 0 contributing the 2^0 bit. The hmatrix tensor layout
--- puts qubit 0 in the 2^(n-1) position, so reference matrices index through
--- `bitRev` to convert layout index ↔ logical integer.
+-- NB: `qft` is MSB first — qubit 0 holds the 2^(n-1) bit, as in the hmatrix
+-- tensor layout, so a matrix index is the integer its basis state represents.
 
--- | Reverse the n-bit representation of x.
-bitRev :: Int -> Int -> Int
-bitRev n x = foldl (\acc i -> acc * 2 + (x `div` 2 ^ i) `mod` 2) 0 [0 .. n - 1]
-
--- | Analytic unitary DFT on N = 2^n points: F[j,k] = e^{2πi jk/N} / √N,
---   with j,k the logical (LSB-convention) integers. This is the *definition*
---   the circuit `qft n` is checked against.
+-- | Analytic unitary DFT on N = 2^n points: F[j,k] = e^{2πi jk/N} / √N.
+--   This is the *definition* the circuit `qft n` is checked against.
 dftMat :: Int -> CMat
 dftMat n =
   let bigN = 2 ^ n :: Int
       d    = fromIntegral bigN
-      ω a b = let j = bitRev n a; k = bitRev n b
-              in cis (2 * pi * fromIntegral (j * k) / d) / (sqrt d :+ 0)
-  in (bigN H.>< bigN) [ ω a b | a <- [0 .. bigN - 1], b <- [0 .. bigN - 1] ]
+      ω j k = cis (2 * pi * fromIntegral (j * k) / d) / (sqrt d :+ 0)
+  in (bigN H.>< bigN) [ ω j k | j <- [0 .. bigN - 1], k <- [0 .. bigN - 1] ]
 
 -- | Index-reversal permutation P|j⟩ = |(-j) mod N⟩. The DFT squares to this.
 revMat :: Int -> CMat
 revMat n =
   let bigN = 2 ^ n :: Int
   in (bigN H.>< bigN)
-       [ if bitRev n aOut == ((bigN - bitRev n aIn) `mod` bigN) then 1 else 0
+       [ if aOut == ((bigN - aIn) `mod` bigN) then 1 else 0
        | aOut <- [0 .. bigN - 1], aIn <- [0 .. bigN - 1] ]
 
 -- | First column of the n-qubit identity-sized uniform vector: 1/√N everywhere.
