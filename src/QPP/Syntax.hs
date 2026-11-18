@@ -25,15 +25,13 @@ type Nat = Int -- Constraint: n >= 0
  -}
 -- ANCHOR: qop-syntax
 data QOp
-  = Id Nat -- Identity n: C^{2^n} -> C^{2^n} is the n-qubit identity operator.
-                 -- Identity 0: C^1 -> C^1 scalar multiplication by 1, unit for ⊗.
-                 -- Identity 1 = I: C^2 -> C^2
-                 -- Identity n is the family of units for ∘.
-  | Phase Rational -- Global phase e^{i π θ} (scalar multiplication)
+  = Id Nat            -- Identity n: n-qubit identity on C^{2^n}.
+                      -- Identity 0: C^1 -> C^1 scalar multiplication by 1.
+  | Phase Rational    -- Global phase e^{i π θ} (scalar multiplication)
   | X | Y | Z | H | SX
-  | R QOp Rational    -- Rotation by an angle (in units π); the axis must be Hermitian unless the angle is zero.
-  | C QOp             -- Controlled (possibly multi-qubit) operator
-  | Permute [Nat]     -- Permutes wires, e.g. Permute [2,0,1] maps |q0 q1 q2> to |q2 q0 q1>
+  | R QOp Rational    -- Rotation in units of π: R a θ = exp(-i a π θ/2)
+  | C QOp             -- Controlled (possibly multi-qubit) operator 
+  | Permute [Nat]     -- Permutes qubits
   | Tensor QOp QOp    -- Tensor product a ⊗ b of any two operators
   | DirectSum QOp QOp -- Direct sum a <+> b of operators with same arity.
   | Compose QOp QOp   -- Composition a∘b of operators with same arity.
