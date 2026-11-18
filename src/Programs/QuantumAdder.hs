@@ -20,10 +20,10 @@ addRegister' :: Nat -> Nat -> QOp
 addRegister' na nx =
     (Id na ⊗ adj (qftrev nx)) ∘ phaseAddRegister [nx, nx-1 .. 1] na ∘ (Id na ⊗ qftrev nx)
 
--- | Addition of a in the Fourier basis, |k⟩ ↦ e^{2πi ak/2^n} |k⟩: one P-gate per qubit,
---   by angle 2πa/2^l for the qubit listed as l, which holds the 2^(n-l) bit of k.
+-- | Addition of a in the Fourier basis, |y⟩ ↦ e^{2πi ay/2^n} |y⟩: one P-gate per qubit,
+--   by angle 2πa/2^k for the qubit listed as k, which holds the 2^(n-k) bit of y.
 phaseAdd :: [Nat] -> Integer -> QOp
-phaseAdd ls a = foldr (⊗) One [ C (Phase (2 * fromIntegral a / 2^l)) | l <- ls ]
+phaseAdd ks a = foldr (⊗) One [ C (Phase (2 * fromIntegral a / 2^k)) | k <- ks ]
 
 -- | Addition of the register a_1 … a_na in the Fourier basis: qubit a_j controls adding 2^(na-j).
 phaseAddRegister :: [Nat] -> Nat -> QOp
