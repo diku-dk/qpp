@@ -26,3 +26,4 @@ cabal.project.local~
 !.vscode/qpp.code-snippets
 !.vscode/extensions.json
 **/*/.vscode/
+output/*
